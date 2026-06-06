@@ -37,8 +37,8 @@ export const DEFAULT_BORDER: BorderParams = {
   dotSize: 9,
   rings: 4,
   speed: 1,
-  title: "MUDE",
-  handle: "@mude.app",
+  title: "RC",
+  handle: "@rc.pointilism",
   showTitle: true,
 };
 

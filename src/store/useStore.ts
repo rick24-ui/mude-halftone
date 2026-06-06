@@ -9,7 +9,7 @@ export interface SavedStyle {
   params: PointillismParams;
 }
 
-const LIB_KEY = "mude-pontilhismo-lib";
+const LIB_KEY = "rc-pointilism-lib";
 
 function loadLibrary(): SavedStyle[] {
   if (typeof window === "undefined") return [];

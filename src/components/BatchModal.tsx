@@ -26,7 +26,7 @@ export default function BatchModal({ onClose }: { onClose: () => void }) {
     const blob = await processBatch(files, params, format, scale, 1000, (done, total, name) =>
       setProgress({ done, total, name })
     );
-    downloadBlob(blob, timestampName("mude-pontilhismo-lote", "zip"));
+    downloadBlob(blob, timestampName("rc-pointilism-batch", "zip"));
     setProgress(null);
   };
 

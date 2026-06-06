@@ -6,8 +6,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MUDE — Pontilhismo",
-  description: "Conversor de imagens e textos em arte pontilhismo/halftone para a MUDE.",
+  title: "RC — Pointilism Generator",
+  description: "Convert images and text into pointilism/halftone art. RC Pointilism Generator.",
 };
 
 // Fontes de display carregadas em runtime (não dependem de build/rede para subir o app).

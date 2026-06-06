@@ -52,7 +52,7 @@ export default function TextControls() {
         align,
         uppercase,
       });
-      if (id === token.current) setSource(source, `texto-${text.replace(/\s+/g, "_").slice(0, 24) || "mude"}`);
+      if (id === token.current) setSource(source, `text-${text.replace(/\s+/g, "_").slice(0, 24) || "rc"}`);
     }, 120);
     return () => clearTimeout(handle);
   }, [text, font, weight, fontSize, letterSpacing, lineHeight, align, uppercase, setSource]);

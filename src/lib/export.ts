@@ -2,7 +2,7 @@ import { Dot, PointillismParams, INK } from "./types";
 import { buildSVG, renderCanvas, sampleDots, imageToSource } from "./engine";
 import { applyAnimation } from "./animation";
 
-export function timestampName(prefix = "mude-pontilhismo", ext = "png"): string {
+export function timestampName(prefix = "rc-pointilism", ext = "png"): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
@@ -33,7 +33,7 @@ export function exportPNG(
   canvas.toBlob((blob) => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
-    triggerDownload(url, timestampName("mude-pontilhismo", "png"));
+    triggerDownload(url, timestampName("rc-pointilism", "png"));
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, "image/png");
 }
@@ -42,7 +42,7 @@ export function exportSVG(dots: Dot[], params: PointillismParams, W: number, H: 
   const svg = buildSVG(dots, params, W, H);
   const blob = new Blob([svg], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
-  triggerDownload(url, timestampName("mude-pontilhismo", "svg"));
+  triggerDownload(url, timestampName("rc-pointilism", "svg"));
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
@@ -68,7 +68,7 @@ export async function exportPDF(
   const orientation = W >= H ? "landscape" : "portrait";
   const pdf = new jsPDF({ orientation, unit: "px", format: [canvas.width, canvas.height] });
   pdf.addImage(png, "PNG", 0, 0, canvas.width, canvas.height);
-  pdf.save(timestampName("mude-pontilhismo", "pdf"));
+  pdf.save(timestampName("rc-pointilism", "pdf"));
 }
 
 export interface BatchItem {
@@ -191,7 +191,7 @@ export async function exportGIF(
   }
   gif.finish();
   const gifBytes = gif.bytes() as unknown as BlobPart;
-  downloadBlob(new Blob([gifBytes], { type: "image/gif" }), timestampName("mude-pontilhismo", "gif"));
+  downloadBlob(new Blob([gifBytes], { type: "image/gif" }), timestampName("rc-pointilism", "gif"));
 }
 
 // bitrate generoso para manter as bordas dos pontos nítidas
@@ -284,7 +284,7 @@ export async function exportVideo(
       await encoder.flush();
       if (encError) throw encError;
       muxer.finalize();
-      downloadBlob(new Blob([muxer.target.buffer], { type: "video/mp4" }), timestampName("mude-pontilhismo", "mp4"));
+      downloadBlob(new Blob([muxer.target.buffer], { type: "video/mp4" }), timestampName("rc-pointilism", "mp4"));
       return "mp4";
     } catch (e) {
       console.warn("WebCodecs indisponível, usando encoder WASM:", e);
@@ -326,7 +326,7 @@ export async function exportVideo(
   const out = enc.FS.readFile(enc.outputFilename);
   const bytes = out.slice() as unknown as BlobPart;
   enc.delete();
-  downloadBlob(new Blob([bytes], { type: "video/mp4" }), timestampName("mude-pontilhismo", "mp4"));
+  downloadBlob(new Blob([bytes], { type: "video/mp4" }), timestampName("rc-pointilism", "mp4"));
   return "mp4";
 }
 

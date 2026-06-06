@@ -117,13 +117,13 @@ export default function BordersStudio() {
     const ctx = canvas.getContext("2d")!;
     drawBorder(ctx, p, tRef.current);
     canvas.toBlob((blob) => {
-      if (blob) downloadBlob(blob, timestampName("mude-border", "png"));
+      if (blob) downloadBlob(blob, timestampName("rc-pointilism-border", "png"));
     }, "image/png");
   };
 
   const exportSVG = () => {
     const svg = buildBorderSVG(p, tRef.current);
-    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), timestampName("mude-border", "svg"));
+    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), timestampName("rc-pointilism-border", "svg"));
   };
 
   return (

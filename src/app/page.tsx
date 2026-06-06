@@ -43,7 +43,7 @@ export default function Home() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <span className="h-3 w-3 rounded-full bg-red" />
-            <span className="mono text-sm font-bold tracking-tight">MUDE</span>
+            <span className="mono text-sm font-bold tracking-tight">RC — POINTILISM GENERATOR</span>
           </div>
           <div className="flex items-center gap-1 rounded-md bg-[var(--panel-2)] p-1">
             {tabBtn("ponto", "Pontilhismo")}
@@ -94,9 +94,9 @@ export default function Home() {
       ) : !source ? (
         <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Converta imagens em pontilhismo</h1>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">RC — Pointilism Generator</h1>
             <p className="mt-2 max-w-md text-sm text-muted">
-              Suba uma silhueta, ícone ou foto. Ajuste pontos, formas, movimento, cores e células elásticas. Exporte em SVG ou PNG.
+              Upload a silhouette, icon or photo. Adjust dots, shapes, motion, colors and elastic cells. Export as SVG or PNG.
             </p>
           </div>
           <UploadDropzone />
