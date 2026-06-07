@@ -8,8 +8,9 @@ import ControlsPanel from "@/components/ControlsPanel";
 import BatchModal from "@/components/BatchModal";
 import BordersStudio from "@/components/borders/BordersStudio";
 import TextStudio from "@/components/text/TextStudio";
+import TrackerStudio from "@/components/tracker/TrackerStudio";
 
-type Tab = "ponto" | "texto" | "borders";
+type Tab = "ponto" | "texto" | "borders" | "tracker";
 
 export default function Home() {
   const source = useStore((s) => s.source);
@@ -49,6 +50,7 @@ export default function Home() {
             {tabBtn("ponto", "Pontilhismo")}
             {tabBtn("texto", "Texto")}
             {tabBtn("borders", "Borders")}
+            {tabBtn("tracker", "Tracker")}
           </div>
         </div>
 
@@ -87,7 +89,9 @@ export default function Home() {
       {batchOpen && <BatchModal onClose={() => setBatchOpen(false)} />}
 
       {/* Body */}
-      {tab === "borders" ? (
+      {tab === "tracker" ? (
+        <TrackerStudio />
+      ) : tab === "borders" ? (
         <BordersStudio />
       ) : tab === "texto" ? (
         <TextStudio />
