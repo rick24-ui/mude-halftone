@@ -1,7 +1,18 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { detectPoints, drawOverlay, loadDetector, TrackedPoint, DrawOptions } from "@/lib/tracker";
+import {
+  detectPoints,
+  drawOverlay,
+  loadDetector,
+  TrackedPoint,
+  DrawOptions,
+  DEFAULT_REGION_LABELS,
+  DEFAULT_ZOOM_LABEL,
+  DEFAULT_LABEL_FONT,
+  LABEL_FONTS,
+  FILTERS,
+} from "@/lib/tracker";
 import { downloadBlob, timestampName } from "@/lib/export";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -28,7 +39,15 @@ const DEFAULT: DrawOptions = {
   grain: false,
   vignette: false,
   zoomInset: true,
+  zoomFocus: null,
+  regionLabels: [...DEFAULT_REGION_LABELS],
+  zoomLabel: DEFAULT_ZOOM_LABEL,
+  labelFont: DEFAULT_LABEL_FONT,
+  filter: "none",
 };
+
+const inputCls =
+  "w-full rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red";
 
 // ─── Sub-components ───────────────────────────────────────────────────────
 
@@ -65,6 +84,7 @@ export default function TrackerStudio() {
   const [opts, setOpts] = useState<DrawOptions>(DEFAULT);
   const [status, setStatus] = useState<Status>("idle");
   const [dragging, setDragging] = useState(false);
+  const [autoDetect, setAutoDetect] = useState(true);
 
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -72,6 +92,20 @@ export default function TrackerStudio() {
 
   const set = <K extends keyof DrawOptions>(key: K, val: DrawOptions[K]) =>
     setOpts((o) => ({ ...o, [key]: val }));
+
+  // Size the canvas to the image and draw the first frame once it's mounted
+  // (the <canvas> only enters the DOM after imgSrc is set, so this can't
+  // happen synchronously inside the image's onload handler).
+  useEffect(() => {
+    if (!imgSrc || !canvasRef.current || !imgRef.current) return;
+    const img = imgRef.current;
+    const maxW = 900;
+    const scale = Math.min(1, maxW / img.naturalWidth);
+    canvasRef.current.width = Math.round(img.naturalWidth * scale);
+    canvasRef.current.height = Math.round(img.naturalHeight * scale);
+    const ctx = canvasRef.current.getContext("2d")!;
+    ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+  }, [imgSrc]);
 
   // Redraw whenever options or points change
   useEffect(() => {
@@ -84,21 +118,38 @@ export default function TrackerStudio() {
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
-      if (canvasRef.current) {
-        // Scale to fit display — max 900px wide
-        const maxW = 900;
-        const scale = Math.min(1, maxW / img.naturalWidth);
-        canvasRef.current.width = Math.round(img.naturalWidth * scale);
-        canvasRef.current.height = Math.round(img.naturalHeight * scale);
-        const ctx = canvasRef.current.getContext("2d")!;
-        ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      }
       setImgSrc(url);
       setPoints([]);
       setStatus("idle");
+      set("zoomFocus", null);
     };
     img.src = url;
   }, []);
+
+  // Click a keypoint dot to focus the zoom inset on it; click it again to clear.
+  // Only active while "Zoom inset" is enabled — that toggle is the master on/off.
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!opts.zoomInset || !points.length) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = ((e.clientX - rect.left) / rect.width) * canvas.width;
+      const cy = ((e.clientY - rect.top) / rect.height) * canvas.height;
+
+      let nearest: TrackedPoint | null = null;
+      let nearestDist = Infinity;
+      for (const p of points) {
+        const dist = Math.hypot(p.x * canvas.width - cx, p.y * canvas.height - cy);
+        if (dist < nearestDist) { nearestDist = dist; nearest = p; }
+      }
+      const hitRadius = Math.max(opts.dotRadius * 2.5, 14);
+      if (nearest && nearestDist <= hitRadius) {
+        set("zoomFocus", opts.zoomFocus === nearest.name ? null : nearest.name);
+      }
+    },
+    [opts.zoomInset, opts.zoomFocus, opts.dotRadius, points]
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -131,13 +182,29 @@ export default function TrackerStudio() {
     setStatus("done");
   }, [opts]);
 
+  // Auto-detect right after a new image is mounted, when enabled
+  useEffect(() => {
+    if (!imgSrc || !autoDetect) return;
+    void detect();
+    // Only re-trigger when a *new* image is mounted — not on every opts/detect change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imgSrc, autoDetect]);
+
   const exportPNG = useCallback(() => {
-    if (!canvasRef.current) return;
-    canvasRef.current.toBlob(
+    if (!imgRef.current || !points.length) return;
+    const img = imgRef.current;
+    // Re-render the overlay onto an offscreen canvas at the source image's
+    // native resolution — the on-screen canvas is downscaled to fit the
+    // viewport (max 900px wide), which would otherwise cap export quality.
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = img.naturalWidth;
+    exportCanvas.height = img.naturalHeight;
+    drawOverlay(exportCanvas, img, points, opts);
+    exportCanvas.toBlob(
       (blob) => { if (blob) downloadBlob(blob, timestampName("rc-tracker", "png")); },
       "image/png"
     );
-  }, []);
+  }, [points, opts]);
 
   const busy = status === "loading-model" || status === "detecting";
 
@@ -175,7 +242,9 @@ export default function TrackerStudio() {
         ) : (
           <canvas
             ref={canvasRef}
-            className="max-h-full max-w-full rounded-lg shadow-2xl"
+            onClick={handleCanvasClick}
+            title={opts.zoomInset ? "Clique em um ponto para focar o zoom de detalhe" : undefined}
+            className={`max-h-full max-w-full rounded-lg shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
           />
         )}
 
@@ -197,6 +266,65 @@ export default function TrackerStudio() {
       {/* ── Controls panel ──────────────────────────────────────────────── */}
       <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-[var(--panel)]">
         <div className="thin-scroll flex-1 overflow-y-auto p-4 space-y-4">
+
+          {/* Detection behavior */}
+          <Section title="Detecção">
+            <Toggle
+              label="Detectar ao subir imagem"
+              value={autoDetect}
+              onChange={setAutoDetect}
+            />
+          </Section>
+
+          {/* Editable label texts */}
+          <Section title="Textos das regiões">
+            {DEFAULT_REGION_LABELS.map((defaultLabel, i) => (
+              <label key={i} className="block">
+                <span className="label mb-1 block">{`Região ${i + 1}`}</span>
+                <input
+                  type="text"
+                  className={inputCls}
+                  placeholder={defaultLabel}
+                  value={opts.regionLabels[i] ?? ""}
+                  onChange={(e) => {
+                    const next = [...opts.regionLabels];
+                    next[i] = e.target.value;
+                    set("regionLabels", next);
+                  }}
+                />
+              </label>
+            ))}
+            <label className="block">
+              <span className="label mb-1 block">Zoom inset</span>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder={DEFAULT_ZOOM_LABEL}
+                value={opts.zoomLabel}
+                onChange={(e) => set("zoomLabel", e.target.value)}
+              />
+            </label>
+          </Section>
+
+          {/* Label font */}
+          <Section title="Fonte dos textos">
+            <div className="grid grid-cols-2 gap-1.5">
+              {LABEL_FONTS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => set("labelFont", f.family)}
+                  style={{ fontFamily: f.family }}
+                  className={`truncate rounded border px-2 py-2 text-[12px] leading-none transition-colors ${
+                    opts.labelFont === f.family
+                      ? "border-red bg-red/10 text-[var(--text)]"
+                      : "border-line text-muted hover:text-[var(--text)]"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </Section>
 
           {/* Color */}
           <Section title="Cor dos elementos">
@@ -226,7 +354,28 @@ export default function TrackerStudio() {
             <Toggle label="Esqueleto (linhas)" value={opts.showSkeleton} onChange={(v) => set("showSkeleton", v)} />
             <Toggle label="Bounding boxes" value={opts.showBoxes} onChange={(v) => set("showBoxes", v)} />
             <Toggle label="Labels técnicos" value={opts.showLabels} onChange={(v) => set("showLabels", v)} />
-            <Toggle label="Zoom inset (detalhe)" value={opts.zoomInset} onChange={(v) => set("zoomInset", v)} />
+            <Toggle
+              label="Zoom inset (detalhe)"
+              value={opts.zoomInset}
+              onChange={(v) => set("zoomInset", v)}
+            />
+            {opts.zoomInset && (
+              <div className="flex items-center justify-between gap-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5">
+                <span className="text-[10px] leading-snug text-muted">
+                  {opts.zoomFocus
+                    ? `Foco: ${opts.zoomFocus.replace(/_/g, " ")}`
+                    : "Clique em um ponto da imagem para focar o zoom"}
+                </span>
+                {opts.zoomFocus && (
+                  <button
+                    onClick={() => set("zoomFocus", null)}
+                    className="shrink-0 rounded border border-line px-2 py-1 text-[10px] text-muted hover:border-muted hover:text-[var(--text)]"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            )}
           </Section>
 
           {/* Line style */}
@@ -255,6 +404,25 @@ export default function TrackerStudio() {
                 onChange={(e) => set("dotRadius", parseInt(e.target.value))}
               />
             </label>
+          </Section>
+
+          {/* Creative filters */}
+          <Section title="Filtro de imagem">
+            <div className="grid grid-cols-2 gap-1.5">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => set("filter", f.id)}
+                  className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                    opts.filter === f.id
+                      ? "border-red bg-red/10 text-[var(--text)]"
+                      : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </Section>
 
           {/* Effects */}

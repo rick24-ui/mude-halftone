@@ -5,6 +5,8 @@ export interface TrackedPoint {
   score: number;
 }
 
+export type ImageFilter = "none" | "invert" | "ascii" | "duotone" | "posterize" | "glitch" | "pixelate";
+
 export interface DrawOptions {
   color: string;
   showKeypoints: boolean;
@@ -17,7 +19,49 @@ export interface DrawOptions {
   grain: boolean;
   vignette: boolean;
   zoomInset: boolean;
+  // Name of the keypoint to focus the zoom inset on — set by clicking a dot
+  // on the canvas. Null means no focus point, so no inset is drawn.
+  zoomFocus: string | null;
+  // Editable label texts — parallel to REGIONS (by index) plus the zoom inset label
+  regionLabels: string[];
+  zoomLabel: string;
+  // Font family used to render technical labels on the canvas
+  labelFont: string;
+  // Creative/editorial image filter applied to the source image
+  filter: ImageFilter;
 }
+
+export interface LabelFontDef {
+  id: string;
+  label: string;
+  family: string;
+}
+
+export const LABEL_FONTS: LabelFontDef[] = [
+  { id: "geist-mono", label: "Geist Mono", family: '"Geist Mono", ui-monospace, monospace' },
+  { id: "oswald", label: "Oswald", family: '"Oswald", sans-serif' },
+  { id: "barlow", label: "Barlow Condensed", family: '"Barlow Condensed", sans-serif' },
+  { id: "archivo", label: "Archivo Black", family: '"Archivo Black", sans-serif' },
+  { id: "bebas", label: "Bebas Neue", family: '"Bebas Neue", sans-serif' },
+  { id: "anton", label: "Anton", family: '"Anton", sans-serif' },
+];
+
+export const DEFAULT_LABEL_FONT = LABEL_FONTS[0].family;
+
+export interface FilterDef {
+  id: ImageFilter;
+  label: string;
+}
+
+export const FILTERS: FilterDef[] = [
+  { id: "none", label: "Nenhum" },
+  { id: "invert", label: "Invertido" },
+  { id: "duotone", label: "Duotone" },
+  { id: "posterize", label: "Posterizado" },
+  { id: "ascii", label: "ASCII" },
+  { id: "glitch", label: "Glitch" },
+  { id: "pixelate", label: "Pixelado" },
+];
 
 // ─── Skeleton connections ───────────────────────────────────────────────────
 
@@ -47,7 +91,6 @@ const SKELETON: [string, string][] = [
 interface Region {
   label: string;
   keys: string[];
-  zoom?: boolean;
 }
 
 const REGIONS: Region[] = [
@@ -55,9 +98,14 @@ const REGIONS: Region[] = [
   { label: "Kinetic arc vector", keys: ["left_shoulder", "left_elbow", "left_wrist"] },
   { label: "Core transfer chain", keys: ["left_shoulder", "right_shoulder", "left_hip", "right_hip"] },
   { label: "Hovering point", keys: ["nose", "left_shoulder", "right_shoulder"] },
-  { label: "Ground contact", keys: ["right_knee", "right_ankle"], zoom: true },
+  { label: "Ground contact", keys: ["right_knee", "right_ankle"] },
   { label: "Anchor node", keys: ["left_knee", "left_ankle"] },
 ];
+
+export const DEFAULT_ZOOM_LABEL = "Strike zone";
+
+// Default editable label texts, in REGIONS order — UI seeds its inputs from this
+export const DEFAULT_REGION_LABELS: string[] = REGIONS.map((r) => r.label);
 
 // ─── Model loader ─────────────────────────────────────────────────────────
 
@@ -136,7 +184,7 @@ export function drawOverlay(
   const ctx = canvas.getContext("2d")!;
 
   ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(src, 0, 0, w, h);
+  drawFilteredImage(ctx, src, w, h, opts.filter, opts.color);
 
   if (!points.length) return;
 
@@ -174,23 +222,34 @@ export function drawOverlay(
     });
   }
 
+  // ── Zoom-focus ring — highlights the keypoint clicked by the user ───────
+  const focusPoint = opts.zoomFocus ? map.get(opts.zoomFocus) : undefined;
+  if (focusPoint) {
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = opts.lineWidth * 1.6;
+    ctx.beginPath();
+    ctx.arc(px(focusPoint), py(focusPoint), opts.dotRadius * 2.4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ── Region boxes + labels ───────────────────────────────────────────────
   const pad = w * 0.038;
   const fontSize = Math.max(10, w * 0.012);
-  ctx.font = `${fontSize}px "Geist Mono", ui-monospace, monospace`;
+  ctx.font = `${fontSize}px ${opts.labelFont}`;
   ctx.textBaseline = "top";
-
-  let zoomRegion: { bx: number; by: number; bw: number; bh: number } | null = null;
 
   interface ValidRegion extends Region { pts: TrackedPoint[]; avgScore: number; id: string; }
 
-  const validRegions: ValidRegion[] = REGIONS.map((rg) => {
+  const validRegions: ValidRegion[] = REGIONS.map((rg, i) => {
     const pts = rg.keys
       .map((k) => map.get(k))
       .filter((p): p is TrackedPoint => p !== undefined);
     if (pts.length < Math.min(2, rg.keys.length)) return null;
     const avgScore = pts.reduce((s, p) => s + p.score, 0) / pts.length;
-    return { ...rg, pts, avgScore, id: uid() } as ValidRegion;
+    const label = opts.regionLabels[i]?.trim() || rg.label;
+    return { ...rg, label, pts, avgScore, id: uid() } as ValidRegion;
   })
     .filter((r): r is ValidRegion => r !== null)
     .sort((a, b) => b.avgScore - a.avgScore)
@@ -221,15 +280,15 @@ export function drawOverlay(
       ctx.fillText(label, bx + 4, by + bh + 4);
       ctx.globalAlpha = 1;
     }
-
-    if (rg.zoom) {
-      zoomRegion = { bx, by, bw, bh };
-    }
   });
 
-  // ── Zoom inset ──────────────────────────────────────────────────────────
-  if (opts.zoomInset && zoomRegion) {
-    const { bx, by, bw, bh } = zoomRegion as { bx: number; by: number; bw: number; bh: number };
+  // ── Zoom inset — crops in around the user-clicked focus keypoint ────────
+  if (opts.zoomInset && focusPoint) {
+    const size = Math.min(w, h) * 0.16;
+    const bx = px(focusPoint) - size / 2;
+    const by = py(focusPoint) - size / 2;
+    const bw = size;
+    const bh = size;
     const insetW = Math.min(bw * 2.5, w * 0.35);
     const insetH = Math.min(bh * 2.5, h * 0.35);
     const insetX = w - insetW - pad * 1.5;
@@ -269,7 +328,7 @@ export function drawOverlay(
 
     // Label below inset
     if (opts.showLabels) {
-      const lbl = `Strike zone ${uid()}`;
+      const lbl = `${opts.zoomLabel.trim() || DEFAULT_ZOOM_LABEL} ${uid()}`;
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = opts.color;
       ctx.fillText(lbl, insetX, insetY + insetH + 4);
@@ -312,5 +371,156 @@ function applyVignette(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.save();
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+// ─── Creative / editorial image filters ────────────────────────────────────
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const n = parseInt(full, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function drawFilteredImage(
+  ctx: CanvasRenderingContext2D,
+  src: HTMLImageElement | HTMLCanvasElement,
+  w: number,
+  h: number,
+  filter: ImageFilter,
+  accentColor: string
+): void {
+  switch (filter) {
+    case "invert":
+      ctx.save();
+      ctx.filter = "invert(1)";
+      ctx.drawImage(src, 0, 0, w, h);
+      ctx.restore();
+      return;
+    case "duotone":
+      ctx.drawImage(src, 0, 0, w, h);
+      applyDuotone(ctx, w, h, accentColor);
+      return;
+    case "posterize":
+      ctx.drawImage(src, 0, 0, w, h);
+      applyPosterize(ctx, w, h, 4);
+      return;
+    case "glitch":
+      ctx.drawImage(src, 0, 0, w, h);
+      applyGlitch(ctx, w, h);
+      return;
+    case "pixelate":
+      applyPixelate(ctx, src, w, h);
+      return;
+    case "ascii":
+      applyAscii(ctx, src, w, h, accentColor);
+      return;
+    case "none":
+    default:
+      ctx.drawImage(src, 0, 0, w, h);
+  }
+}
+
+// Maps luminance onto a gradient between black and the selected accent color
+function applyDuotone(ctx: CanvasRenderingContext2D, w: number, h: number, accentHex: string) {
+  const accent = hexToRgb(accentHex);
+  const id = ctx.getImageData(0, 0, w, h);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
+    d[i] = accent.r * lum;
+    d[i + 1] = accent.g * lum;
+    d[i + 2] = accent.b * lum;
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+// Quantizes each color channel into a fixed number of levels — poster-print look
+function applyPosterize(ctx: CanvasRenderingContext2D, w: number, h: number, levels: number) {
+  const step = 255 / (levels - 1);
+  const id = ctx.getImageData(0, 0, w, h);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = Math.round(Math.round(d[i] / step) * step);
+    d[i + 1] = Math.round(Math.round(d[i + 1] / step) * step);
+    d[i + 2] = Math.round(Math.round(d[i + 2] / step) * step);
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+// Splits red/blue channels horizontally for a chromatic-aberration "glitch" look
+function applyGlitch(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const shift = Math.max(2, Math.round(w * 0.01));
+  const id = ctx.getImageData(0, 0, w, h);
+  const original = new Uint8ClampedArray(id.data);
+  const d = id.data;
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      const i = (row + x) * 4;
+      const rX = Math.min(w - 1, x + shift);
+      const bX = Math.max(0, x - shift);
+      d[i] = original[(row + rX) * 4];
+      d[i + 2] = original[(row + bX) * 4 + 2];
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+// Downscales then upscales with no smoothing — mosaic / censor-block look
+function applyPixelate(
+  ctx: CanvasRenderingContext2D,
+  src: HTMLImageElement | HTMLCanvasElement,
+  w: number,
+  h: number
+) {
+  const blockSize = Math.max(4, Math.round(w * 0.018));
+  const sw = Math.max(1, Math.floor(w / blockSize));
+  const sh = Math.max(1, Math.floor(h / blockSize));
+  const off = document.createElement("canvas");
+  off.width = sw;
+  off.height = sh;
+  const octx = off.getContext("2d")!;
+  octx.drawImage(src, 0, 0, sw, sh);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, sw, sh, 0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+}
+
+// Samples luminance on a coarse grid and renders it as monospace ASCII glyphs
+function applyAscii(
+  ctx: CanvasRenderingContext2D,
+  src: HTMLImageElement | HTMLCanvasElement,
+  w: number,
+  h: number,
+  accentColor: string
+) {
+  const cell = Math.max(5, Math.round(w / 110));
+  const cols = Math.max(1, Math.floor(w / cell));
+  const rows = Math.max(1, Math.floor(h / cell));
+
+  const off = document.createElement("canvas");
+  off.width = cols;
+  off.height = rows;
+  const octx = off.getContext("2d")!;
+  octx.drawImage(src, 0, 0, cols, rows);
+  const sample = octx.getImageData(0, 0, cols, rows).data;
+
+  const ramp = " .:-=+*#%@";
+  ctx.save();
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = accentColor;
+  ctx.font = `${cell}px ui-monospace, Menlo, monospace`;
+  ctx.textBaseline = "top";
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const i = (y * cols + x) * 4;
+      const lum = (sample[i] * 0.299 + sample[i + 1] * 0.587 + sample[i + 2] * 0.114) / 255;
+      const ch = ramp[Math.min(ramp.length - 1, Math.floor(lum * ramp.length))];
+      ctx.fillText(ch, x * cell, y * cell);
+    }
+  }
   ctx.restore();
 }
