@@ -19,9 +19,9 @@ export interface DrawOptions {
   grain: boolean;
   vignette: boolean;
   zoomInset: boolean;
-  // Name of the keypoint to focus the zoom inset on — set by clicking a dot
-  // on the canvas. Null means no focus point, so no inset is drawn.
-  zoomFocus: string | null;
+  // Names of keypoints to show a zoom inset for — toggled by clicking dots
+  // on the canvas. Empty means no focus points, so no inset is drawn.
+  zoomFocus: string[];
   // Editable label texts — parallel to REGIONS (by index) plus the zoom inset label
   regionLabels: string[];
   zoomLabel: string;
@@ -29,6 +29,9 @@ export interface DrawOptions {
   labelFont: string;
   // Creative/editorial image filter applied to the source image
   filter: ImageFilter;
+  // 0–1: how much the region bounding boxes randomly drift in position,
+  // size and rotation on every redraw — for a dynamic, glitchy feel
+  boxJitter: number;
 }
 
 export interface LabelFontDef {
@@ -222,9 +225,12 @@ export function drawOverlay(
     });
   }
 
-  // ── Zoom-focus ring — highlights the keypoint clicked by the user ───────
-  const focusPoint = opts.zoomFocus ? map.get(opts.zoomFocus) : undefined;
-  if (focusPoint) {
+  // ── Zoom-focus rings — highlight the keypoints clicked by the user ──────
+  const focusPoints = opts.zoomFocus
+    .map((name) => map.get(name))
+    .filter((p): p is TrackedPoint => p !== undefined);
+
+  focusPoints.forEach((focusPoint) => {
     ctx.save();
     ctx.globalAlpha = 0.9;
     ctx.lineWidth = opts.lineWidth * 1.6;
@@ -232,7 +238,7 @@ export function drawOverlay(
     ctx.arc(px(focusPoint), py(focusPoint), opts.dotRadius * 2.4, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
-  }
+  });
 
   // ── Region boxes + labels ───────────────────────────────────────────────
   const pad = w * 0.038;
@@ -258,15 +264,36 @@ export function drawOverlay(
   validRegions.forEach((rg) => {
     const xs = rg.pts.map((p) => px(p));
     const ys = rg.pts.map((p) => py(p));
-    const bx = Math.min(...xs) - pad;
-    const by = Math.min(...ys) - pad;
-    const bw = Math.max(...xs) - Math.min(...xs) + pad * 2;
-    const bh = Math.max(...ys) - Math.min(...ys) + pad * 2;
+    let bx = Math.min(...xs) - pad;
+    let by = Math.min(...ys) - pad;
+    let bw = Math.max(...xs) - Math.min(...xs) + pad * 2;
+    let bh = Math.max(...ys) - Math.min(...ys) + pad * 2;
+    let angle = 0;
+
+    // Random drift in position, size and rotation — keeps the boxes feeling
+    // alive and editorial instead of rigidly tracking the body
+    if (opts.boxJitter > 0) {
+      const j = opts.boxJitter;
+      const cx = bx + bw / 2;
+      const cy = by + bh / 2;
+      bw *= 1 + (Math.random() - 0.5) * 0.6 * j;
+      bh *= 1 + (Math.random() - 0.5) * 0.6 * j;
+      bx = cx - bw / 2 + (Math.random() - 0.5) * bw * 0.5 * j;
+      by = cy - bh / 2 + (Math.random() - 0.5) * bh * 0.5 * j;
+      angle = (Math.random() - 0.5) * 0.35 * j;
+    }
 
     if (opts.showBoxes) {
+      ctx.save();
       ctx.globalAlpha = 0.8;
-      ctx.strokeRect(bx, by, bw, bh);
-      ctx.globalAlpha = 1;
+      if (angle !== 0) {
+        ctx.translate(bx + bw / 2, by + bh / 2);
+        ctx.rotate(angle);
+        ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
+      } else {
+        ctx.strokeRect(bx, by, bw, bh);
+      }
+      ctx.restore();
     }
 
     if (opts.showLabels) {
@@ -282,58 +309,62 @@ export function drawOverlay(
     }
   });
 
-  // ── Zoom inset — crops in around the user-clicked focus keypoint ────────
-  if (opts.zoomInset && focusPoint) {
-    const size = Math.min(w, h) * 0.16;
-    const bx = px(focusPoint) - size / 2;
-    const by = py(focusPoint) - size / 2;
-    const bw = size;
-    const bh = size;
-    const insetW = Math.min(bw * 2.5, w * 0.35);
-    const insetH = Math.min(bh * 2.5, h * 0.35);
-    const insetX = w - insetW - pad * 1.5;
-    const insetY = h - insetH - pad * 1.5;
-
-    // Source crop in canvas space → map back to source image coords
+  // ── Zoom insets — cropped close-ups of each focused keypoint, scattered
+  // and overlapping at random positions/sizes/rotations for an editorial
+  // collage look ────────────────────────────────────────────────────────
+  if (opts.zoomInset && focusPoints.length) {
     const scaleX = (src instanceof HTMLImageElement ? src.naturalWidth : src.width) / w;
     const scaleY = (src instanceof HTMLImageElement ? src.naturalHeight : src.height) / h;
-    const cropX = Math.max(0, bx * scaleX);
-    const cropY = Math.max(0, by * scaleY);
-    const cropW = Math.max(1, bw * scaleX);
-    const cropH = Math.max(1, bh * scaleY);
+    const cropSize = Math.min(w, h) * 0.16;
 
-    ctx.save();
-    ctx.strokeStyle = opts.color;
-    ctx.lineWidth = opts.lineWidth;
-    ctx.globalAlpha = 0.85;
-    ctx.strokeRect(insetX, insetY, insetW, insetH);
+    focusPoints.forEach((focusPoint) => {
+      const cropX = Math.max(0, px(focusPoint) - cropSize / 2);
+      const cropY = Math.max(0, py(focusPoint) - cropSize / 2);
 
-    ctx.beginPath();
-    ctx.rect(insetX, insetY, insetW, insetH);
-    ctx.clip();
-    ctx.drawImage(src, cropX, cropY, cropW, cropH, insetX, insetY, insetW, insetH);
-    ctx.restore();
+      const insetSize = Math.min(w, h) * (0.18 + Math.random() * 0.16);
+      const insetX = Math.random() * (w - insetSize);
+      const insetY = Math.random() * (h - insetSize);
+      const angle = (Math.random() - 0.5) * 0.3;
 
-    // Connecting line from source box to inset
-    ctx.save();
-    ctx.strokeStyle = opts.color;
-    ctx.lineWidth = opts.lineWidth * 0.7;
-    ctx.globalAlpha = 0.45;
-    ctx.setLineDash([4, 6]);
-    ctx.beginPath();
-    ctx.moveTo(bx + bw, by + bh);
-    ctx.lineTo(insetX, insetY + insetH);
-    ctx.stroke();
-    ctx.restore();
+      ctx.save();
+      ctx.translate(insetX + insetSize / 2, insetY + insetSize / 2);
+      ctx.rotate(angle);
+      ctx.translate(-insetSize / 2, -insetSize / 2);
 
-    // Label below inset
-    if (opts.showLabels) {
-      const lbl = `${opts.zoomLabel.trim() || DEFAULT_ZOOM_LABEL} ${uid()}`;
+      ctx.shadowColor = "rgba(0,0,0,0.5)";
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 6;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, insetSize, insetSize);
+
+      ctx.shadowColor = "transparent";
+      ctx.beginPath();
+      ctx.rect(0, 0, insetSize, insetSize);
+      ctx.clip();
+      ctx.drawImage(
+        src,
+        cropX * scaleX, cropY * scaleY, cropSize * scaleX, cropSize * scaleY,
+        0, 0, insetSize, insetSize
+      );
+
+      ctx.strokeStyle = opts.color;
+      ctx.lineWidth = opts.lineWidth;
       ctx.globalAlpha = 0.85;
-      ctx.fillStyle = opts.color;
-      ctx.fillText(lbl, insetX, insetY + insetH + 4);
+      ctx.strokeRect(0, 0, insetSize, insetSize);
+
+      if (opts.showLabels) {
+        const lbl = `${opts.zoomLabel.trim() || DEFAULT_ZOOM_LABEL} ${uid()}`;
+        ctx.globalAlpha = 0.9;
+        const tw = ctx.measureText(lbl).width;
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(0, insetSize + 2, tw + 8, fontSize + 4);
+        ctx.fillStyle = opts.color;
+        ctx.fillText(lbl, 4, insetSize + 4);
+      }
+
       ctx.globalAlpha = 1;
-    }
+      ctx.restore();
+    });
   }
 
   ctx.restore();

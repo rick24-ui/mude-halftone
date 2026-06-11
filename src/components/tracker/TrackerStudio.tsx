@@ -39,11 +39,12 @@ const DEFAULT: DrawOptions = {
   grain: false,
   vignette: false,
   zoomInset: true,
-  zoomFocus: null,
+  zoomFocus: [],
   regionLabels: [...DEFAULT_REGION_LABELS],
   zoomLabel: DEFAULT_ZOOM_LABEL,
   labelFont: DEFAULT_LABEL_FONT,
   filter: "none",
+  boxJitter: 0,
 };
 
 const inputCls =
@@ -85,6 +86,9 @@ export default function TrackerStudio() {
   const [status, setStatus] = useState<Status>("idle");
   const [dragging, setDragging] = useState(false);
   const [autoDetect, setAutoDetect] = useState(true);
+  // Bumped by the "Embaralhar" button to force a redraw with fresh random
+  // box jitter / inset placement, without otherwise changing opts
+  const [shuffleTick, setShuffleTick] = useState(0);
 
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -107,11 +111,11 @@ export default function TrackerStudio() {
     ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
   }, [imgSrc]);
 
-  // Redraw whenever options or points change
+  // Redraw whenever options or points change (or "Embaralhar" is pressed)
   useEffect(() => {
     if (!canvasRef.current || !imgRef.current || !points.length) return;
     drawOverlay(canvasRef.current, imgRef.current, points, opts);
-  }, [opts, points]);
+  }, [opts, points, shuffleTick]);
 
   const mountImage = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
@@ -121,12 +125,12 @@ export default function TrackerStudio() {
       setImgSrc(url);
       setPoints([]);
       setStatus("idle");
-      set("zoomFocus", null);
+      set("zoomFocus", []);
     };
     img.src = url;
   }, []);
 
-  // Click a keypoint dot to focus the zoom inset on it; click it again to clear.
+  // Click a keypoint dot to add/remove it from the zoom-inset focus list.
   // Only active while "Zoom inset" is enabled — that toggle is the master on/off.
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -145,7 +149,12 @@ export default function TrackerStudio() {
       }
       const hitRadius = Math.max(opts.dotRadius * 2.5, 14);
       if (nearest && nearestDist <= hitRadius) {
-        set("zoomFocus", opts.zoomFocus === nearest.name ? null : nearest.name);
+        set(
+          "zoomFocus",
+          opts.zoomFocus.includes(nearest.name)
+            ? opts.zoomFocus.filter((n) => n !== nearest!.name)
+            : [...opts.zoomFocus, nearest.name]
+        );
       }
     },
     [opts.zoomInset, opts.zoomFocus, opts.dotRadius, points]
@@ -362,13 +371,13 @@ export default function TrackerStudio() {
             {opts.zoomInset && (
               <div className="flex items-center justify-between gap-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5">
                 <span className="text-[10px] leading-snug text-muted">
-                  {opts.zoomFocus
-                    ? `Foco: ${opts.zoomFocus.replace(/_/g, " ")}`
-                    : "Clique em um ponto da imagem para focar o zoom"}
+                  {opts.zoomFocus.length
+                    ? `Foco: ${opts.zoomFocus.length} ponto${opts.zoomFocus.length > 1 ? "s" : ""}`
+                    : "Clique em pontos da imagem para focar o zoom (pode escolher vários)"}
                 </span>
-                {opts.zoomFocus && (
+                {opts.zoomFocus.length > 0 && (
                   <button
-                    onClick={() => set("zoomFocus", null)}
+                    onClick={() => set("zoomFocus", [])}
                     className="shrink-0 rounded border border-line px-2 py-1 text-[10px] text-muted hover:border-muted hover:text-[var(--text)]"
                   >
                     Limpar
@@ -404,6 +413,32 @@ export default function TrackerStudio() {
                 onChange={(e) => set("dotRadius", parseInt(e.target.value))}
               />
             </label>
+          </Section>
+
+          {/* Random / dynamic boxes */}
+          <Section title="Dinâmica">
+            <label className="block">
+              <div className="mb-1 flex justify-between">
+                <span className="label">Aleatoriedade dos quadros</span>
+                <span className="mono text-[11px] text-[var(--text)]">{Math.round(opts.boxJitter * 100)}%</span>
+              </div>
+              <input
+                className="rng w-full"
+                type="range" min={0} max={1} step={0.05}
+                value={opts.boxJitter}
+                onChange={(e) => set("boxJitter", parseFloat(e.target.value))}
+              />
+              <p className="mt-1 text-[10px] leading-snug text-muted">
+                Faz os quadrados de tracking variarem de posição, tamanho e ângulo — deixa a composição mais dinâmica.
+              </p>
+            </label>
+            <button
+              onClick={() => setShuffleTick((t) => t + 1)}
+              disabled={!points.length}
+              className="w-full rounded border border-line py-2 text-[11px] text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+            >
+              Embaralhar
+            </button>
           </Section>
 
           {/* Creative filters */}
