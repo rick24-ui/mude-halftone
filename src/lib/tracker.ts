@@ -5,7 +5,7 @@ export interface TrackedPoint {
   score: number;
 }
 
-export type ImageFilter = "none" | "invert" | "ascii" | "duotone" | "posterize" | "glitch" | "pixelate";
+export type ImageFilter = "none" | "invert" | "ascii" | "duotone" | "posterize" | "glitch" | "pixelate" | "thermal";
 
 export type MarkerStyle = "dot" | "cross" | "ring" | "square" | "triangle";
 export type BoxStyle = "rect" | "corners";
@@ -50,6 +50,19 @@ export interface DrawOptions {
   markerStyle: MarkerStyle;
   // Style used to render region bounding boxes
   boxStyle: BoxStyle;
+  // Draws a constellation network connecting nearby keypoints, plus a
+  // connector line from each zoom inset to its source keypoint
+  connections: boolean;
+  // 0–1: how many neighbor connections each keypoint gets in the network
+  connectionDensity: number;
+  // Adds a soft glow halo around connection lines
+  connectionGlow: boolean;
+  // Floating monospace coordinate readouts near each keypoint — motion-capture feel
+  showCoords: boolean;
+  // Per-region effect override — parallel to REGIONS (by index). "none" = no override
+  regionFilters: ImageFilter[];
+  // Effect applied inside zoom insets — "none" = raw crop of the source image
+  insetFilter: ImageFilter;
 }
 
 export interface MarkerStyleDef {
@@ -102,10 +115,15 @@ export const FILTERS: FilterDef[] = [
   { id: "invert", label: "Invertido" },
   { id: "duotone", label: "Duotone" },
   { id: "posterize", label: "Posterizado" },
+  { id: "thermal", label: "Térmico" },
   { id: "ascii", label: "ASCII" },
   { id: "glitch", label: "Glitch" },
   { id: "pixelate", label: "Pixelado" },
 ];
+
+// Filter options for per-region / per-inset effect pickers — includes
+// "none" as a no-op meaning "use the global filter / raw crop"
+export const REGION_FILTERS: FilterDef[] = FILTERS;
 
 // ─── Skeleton connections ───────────────────────────────────────────────────
 
@@ -312,6 +330,28 @@ export function placeZoomInset(
   return { x: x / canvasW, y: y / canvasH };
 }
 
+// Lazily renders the source image through a given filter onto an offscreen
+// canvas the same size as the main canvas — used to give region boxes and
+// zoom insets their own effect "windows" into the image. Cached per filter
+// so repeated regions with the same effect don't redo the work.
+function getFilteredCanvas(
+  cache: Map<ImageFilter, HTMLCanvasElement>,
+  src: HTMLImageElement | HTMLCanvasElement,
+  w: number,
+  h: number,
+  filter: ImageFilter,
+  accentColor: string
+): HTMLCanvasElement {
+  const cached = cache.get(filter);
+  if (cached) return cached;
+  const off = document.createElement("canvas");
+  off.width = w;
+  off.height = h;
+  drawFilteredImage(off.getContext("2d")!, src, w, h, filter, accentColor);
+  cache.set(filter, off);
+  return off;
+}
+
 export function drawOverlay(
   canvas: HTMLCanvasElement,
   src: HTMLImageElement | HTMLCanvasElement,
@@ -328,6 +368,10 @@ export function drawOverlay(
   drawFilteredImage(ctx, src, w, h, opts.filter, opts.color);
 
   if (!points.length) return;
+
+  // Lazily-rendered per-filter copies of the source — used by per-region
+  // and per-inset effect windows below
+  const filterCache = new Map<ImageFilter, HTMLCanvasElement>();
 
   const map = new Map(points.map((p) => [p.name, p]));
   const px = (p: TrackedPoint) => p.x * w;
@@ -376,13 +420,65 @@ export function drawOverlay(
     ctx.restore();
   });
 
+  // ── Connections network — TouchDesigner-style constellation linking each
+  // keypoint to its nearest neighbors, density controlled by the slider
+  if (opts.connections) {
+    ctx.save();
+    ctx.lineWidth = Math.max(0.5, opts.lineWidth * 0.5);
+    ctx.globalAlpha = 0.45;
+    if (opts.connectionGlow) {
+      ctx.shadowColor = opts.color;
+      ctx.shadowBlur = 8;
+    }
+
+    const k = Math.max(1, Math.round(1 + opts.connectionDensity * 2));
+    const validPoints = points.filter((p) => p.score > 0.3);
+    const drawn = new Set<string>();
+
+    validPoints.forEach((p) => {
+      const neighbors = validPoints
+        .filter((q) => q !== p)
+        .map((q) => ({ q, d: Math.hypot(px(p) - px(q), py(p) - py(q)) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, k);
+
+      neighbors.forEach(({ q }) => {
+        const key = [p.name, q.name].sort().join("|");
+        if (drawn.has(key)) return;
+        drawn.add(key);
+        ctx.beginPath();
+        ctx.moveTo(px(p), py(p));
+        ctx.lineTo(px(q), py(q));
+        ctx.stroke();
+      });
+    });
+
+    ctx.restore();
+  }
+
+  // ── Floating coordinate readouts — motion-capture style normalized
+  // coordinates hovering near each tracked point
+  if (opts.showCoords) {
+    ctx.save();
+    ctx.font = `${Math.max(9, w * 0.0095)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.fillStyle = opts.color;
+    ctx.textBaseline = "middle";
+    ctx.globalAlpha = 0.55;
+    points.forEach((p) => {
+      if (p.score < 0.3) return;
+      const label = `${(p.x * 100).toFixed(1)} ${(p.y * 100).toFixed(1)}`;
+      ctx.fillText(label, px(p) + opts.dotRadius * 2.2, py(p));
+    });
+    ctx.restore();
+  }
+
   // ── Region boxes + labels ───────────────────────────────────────────────
   const pad = w * 0.038;
   const fontSize = Math.max(10, w * 0.012);
   ctx.font = `${fontSize}px ${opts.labelFont}`;
   ctx.textBaseline = "top";
 
-  interface ValidRegion extends Region { pts: TrackedPoint[]; avgScore: number; id: string; }
+  interface ValidRegion extends Region { pts: TrackedPoint[]; avgScore: number; id: string; regionIndex: number; }
 
   const validRegions: ValidRegion[] = REGIONS.map((rg, i) => {
     const pts = rg.keys
@@ -391,7 +487,7 @@ export function drawOverlay(
     if (pts.length < Math.min(2, rg.keys.length)) return null;
     const avgScore = pts.reduce((s, p) => s + p.score, 0) / pts.length;
     const label = opts.regionLabels[i]?.trim() || rg.label;
-    return { ...rg, label, pts, avgScore, id: uid() } as ValidRegion;
+    return { ...rg, label, pts, avgScore, id: uid(), regionIndex: i } as ValidRegion;
   })
     .filter((r): r is ValidRegion => r !== null)
     .sort((a, b) => b.avgScore - a.avgScore)
@@ -419,6 +515,25 @@ export function drawOverlay(
       bx = cx - bw / 2 + (Math.random() - 0.5) * 2 * drift;
       by = cy - bh / 2 + (Math.random() - 0.5) * 2 * drift;
       angle = (Math.random() - 0.5) * 0.7 * j;
+    }
+
+    // Per-region effect window — clips a separately-filtered copy of the
+    // source image to this box's (possibly rotated) shape
+    const regionFilter = opts.regionFilters[rg.regionIndex] ?? "none";
+    if (regionFilter !== "none") {
+      const filtered = getFilteredCanvas(filterCache, src, w, h, regionFilter, opts.color);
+      ctx.save();
+      ctx.beginPath();
+      if (angle !== 0) {
+        ctx.translate(bx + bw / 2, by + bh / 2);
+        ctx.rotate(angle);
+        ctx.rect(-bw / 2, -bh / 2, bw, bh);
+      } else {
+        ctx.rect(bx, by, bw, bh);
+      }
+      ctx.clip();
+      ctx.drawImage(filtered, 0, 0, w, h);
+      ctx.restore();
     }
 
     if (opts.showBoxes) {
@@ -468,16 +583,40 @@ export function drawOverlay(
       const insetX = inset.x * w;
       const insetY = inset.y * h;
 
+      // Per-inset effect — sources the crop from a separately-filtered
+      // copy of the image instead of the raw source
+      const insetFilter = opts.insetFilter ?? "none";
+      const insetSrc = insetFilter !== "none"
+        ? getFilteredCanvas(filterCache, src, w, h, insetFilter, opts.color)
+        : src;
+      const sx = insetFilter !== "none" ? cropX : cropX * scaleX;
+      const sy = insetFilter !== "none" ? cropY : cropY * scaleY;
+      const sw = insetFilter !== "none" ? cropSize : cropSize * scaleX;
+      const sh = insetFilter !== "none" ? cropSize : cropSize * scaleY;
+
       ctx.save();
       ctx.beginPath();
       ctx.rect(insetX, insetY, insetSize, insetSize);
       ctx.clip();
-      ctx.drawImage(
-        src,
-        cropX * scaleX, cropY * scaleY, cropSize * scaleX, cropSize * scaleY,
-        insetX, insetY, insetSize, insetSize
-      );
+      ctx.drawImage(insetSrc, sx, sy, sw, sh, insetX, insetY, insetSize, insetSize);
       ctx.restore();
+
+      // Connector line from the source keypoint to this inset — part of
+      // the constellation network when enabled
+      if (opts.connections) {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = Math.max(0.5, opts.lineWidth * 0.5);
+        if (opts.connectionGlow) {
+          ctx.shadowColor = opts.color;
+          ctx.shadowBlur = 8;
+        }
+        ctx.beginPath();
+        ctx.moveTo(px(focusPoint), py(focusPoint));
+        ctx.lineTo(insetX + insetSize / 2, insetY + insetSize / 2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       ctx.save();
       ctx.strokeStyle = opts.color;
@@ -578,6 +717,10 @@ function drawFilteredImage(
       ctx.drawImage(src, 0, 0, w, h);
       applyPosterize(ctx, w, h, 4);
       return;
+    case "thermal":
+      ctx.drawImage(src, 0, 0, w, h);
+      applyThermal(ctx, w, h);
+      return;
     case "glitch":
       ctx.drawImage(src, 0, 0, w, h);
       applyGlitch(ctx, w, h);
@@ -604,6 +747,42 @@ function applyDuotone(ctx: CanvasRenderingContext2D, w: number, h: number, accen
     d[i] = accent.r * lum;
     d[i + 1] = accent.g * lum;
     d[i + 2] = accent.b * lum;
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+// Thermal-camera "ironbow" palette — maps luminance through a multi-stop
+// black → blue → magenta → orange → white ramp
+const THERMAL_STOPS: [number, number, number, number][] = [
+  [0.00, 0, 0, 0],
+  [0.2, 40, 0, 120],
+  [0.4, 160, 0, 140],
+  [0.6, 230, 60, 20],
+  [0.8, 250, 180, 20],
+  [1.00, 255, 255, 255],
+];
+
+function thermalColor(lum: number): [number, number, number] {
+  for (let i = 0; i < THERMAL_STOPS.length - 1; i++) {
+    const [t0, r0, g0, b0] = THERMAL_STOPS[i];
+    const [t1, r1, g1, b1] = THERMAL_STOPS[i + 1];
+    if (lum >= t0 && lum <= t1) {
+      const t = (lum - t0) / (t1 - t0);
+      return [r0 + (r1 - r0) * t, g0 + (g1 - g0) * t, b0 + (b1 - b0) * t];
+    }
+  }
+  return [255, 255, 255];
+}
+
+function applyThermal(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const id = ctx.getImageData(0, 0, w, h);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
+    const [r, g, b] = thermalColor(lum);
+    d[i] = r;
+    d[i + 1] = g;
+    d[i + 2] = b;
   }
   ctx.putImageData(id, 0, 0);
 }

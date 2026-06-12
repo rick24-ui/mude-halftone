@@ -14,6 +14,7 @@ import {
   DEFAULT_LABEL_FONT,
   LABEL_FONTS,
   FILTERS,
+  REGION_FILTERS,
   MARKER_STYLES,
   BOX_STYLES,
 } from "@/lib/tracker";
@@ -52,6 +53,12 @@ const DEFAULT: DrawOptions = {
   dotGlow: false,
   markerStyle: "dot",
   boxStyle: "rect",
+  connections: false,
+  connectionDensity: 0.4,
+  connectionGlow: false,
+  showCoords: false,
+  regionFilters: DEFAULT_REGION_LABELS.map(() => "none" as const),
+  insetFilter: "none",
 };
 
 const DEFAULT_INSET_SIZE = 0.22;
@@ -578,6 +585,29 @@ export default function TrackerStudio() {
             </button>
           </Section>
 
+          {/* Constellation network — TouchDesigner-style connection lines */}
+          <Section title="Rede de conexões">
+            <Toggle label="Conectar pontos" value={opts.connections} onChange={(v) => set("connections", v)} />
+            {opts.connections && (
+              <label className="block">
+                <div className="mb-1 flex justify-between">
+                  <span className="label">Densidade da rede</span>
+                  <span className="mono text-[11px] text-[var(--text)]">{Math.round(opts.connectionDensity * 100)}%</span>
+                </div>
+                <input
+                  className="rng w-full"
+                  type="range" min={0} max={1} step={0.05}
+                  value={opts.connectionDensity}
+                  onChange={(e) => set("connectionDensity", parseFloat(e.target.value))}
+                />
+              </label>
+            )}
+            {opts.connections && (
+              <Toggle label="Glow nas linhas" value={opts.connectionGlow} onChange={(v) => set("connectionGlow", v)} />
+            )}
+            <Toggle label="Coordenadas flutuantes" value={opts.showCoords} onChange={(v) => set("showCoords", v)} />
+          </Section>
+
           {/* Creative filters */}
           <Section title="Filtro de imagem">
             <div className="grid grid-cols-2 gap-1.5">
@@ -595,6 +625,40 @@ export default function TrackerStudio() {
                 </button>
               ))}
             </div>
+          </Section>
+
+          {/* Per-region / per-inset effect overrides */}
+          <Section title="Efeitos por região">
+            {DEFAULT_REGION_LABELS.map((defaultLabel, i) => (
+              <label key={i} className="block">
+                <span className="label mb-1 block">{opts.regionLabels[i]?.trim() || defaultLabel}</span>
+                <select
+                  className={inputCls}
+                  value={opts.regionFilters[i] ?? "none"}
+                  onChange={(e) => {
+                    const next = [...opts.regionFilters];
+                    next[i] = e.target.value as DrawOptions["regionFilters"][number];
+                    set("regionFilters", next);
+                  }}
+                >
+                  {REGION_FILTERS.map((f) => (
+                    <option key={f.id} value={f.id}>{f.label}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <label className="block">
+              <span className="label mb-1 block">Efeito no zoom</span>
+              <select
+                className={inputCls}
+                value={opts.insetFilter}
+                onChange={(e) => set("insetFilter", e.target.value as DrawOptions["insetFilter"])}
+              >
+                {REGION_FILTERS.map((f) => (
+                  <option key={f.id} value={f.id}>{f.label}</option>
+                ))}
+              </select>
+            </label>
           </Section>
 
           {/* Effects */}
