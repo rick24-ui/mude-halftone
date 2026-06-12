@@ -5,13 +5,17 @@ import {
   detectPoints,
   drawOverlay,
   loadDetector,
+  placeZoomInset,
   TrackedPoint,
   DrawOptions,
+  ZoomInsetState,
   DEFAULT_REGION_LABELS,
   DEFAULT_ZOOM_LABEL,
   DEFAULT_LABEL_FONT,
   LABEL_FONTS,
   FILTERS,
+  MARKER_STYLES,
+  BOX_STYLES,
 } from "@/lib/tracker";
 import { downloadBlob, timestampName } from "@/lib/export";
 
@@ -39,13 +43,20 @@ const DEFAULT: DrawOptions = {
   grain: false,
   vignette: false,
   zoomInset: true,
-  zoomFocus: [],
+  zoomInsets: [],
   regionLabels: [...DEFAULT_REGION_LABELS],
   zoomLabel: DEFAULT_ZOOM_LABEL,
   labelFont: DEFAULT_LABEL_FONT,
   filter: "none",
   boxJitter: 0,
+  dotGlow: false,
+  markerStyle: "dot",
+  boxStyle: "rect",
 };
+
+const DEFAULT_INSET_SIZE = 0.22;
+const MIN_INSET_SIZE = 0.08;
+const MAX_INSET_SIZE = 0.55;
 
 const inputCls =
   "w-full rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red";
@@ -114,7 +125,7 @@ export default function TrackerStudio() {
   // Redraw whenever options or points change (or "Embaralhar" is pressed)
   useEffect(() => {
     if (!canvasRef.current || !imgRef.current || !points.length) return;
-    drawOverlay(canvasRef.current, imgRef.current, points, opts);
+    drawOverlay(canvasRef.current, imgRef.current, points, opts, { interactive: true });
   }, [opts, points, shuffleTick]);
 
   const mountImage = useCallback((file: File) => {
@@ -125,40 +136,122 @@ export default function TrackerStudio() {
       setImgSrc(url);
       setPoints([]);
       setStatus("idle");
-      set("zoomFocus", []);
+      set("zoomInsets", []);
     };
     img.src = url;
   }, []);
 
-  // Click a keypoint dot to add/remove it from the zoom-inset focus list.
-  // Only active while "Zoom inset" is enabled — that toggle is the master on/off.
-  const handleCanvasClick = useCallback(
+  // Tracks an in-progress drag (move or resize) of a zoom inset
+  const dragRef = useRef<{
+    mode: "move" | "resize";
+    index: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  const canvasPoint = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }, []);
+
+  // Pointer down: either start dragging/resizing an existing zoom inset, or
+  // — if it lands near a keypoint dot — toggle a new inset on/off for that point.
+  const handlePointerDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (!opts.zoomInset || !points.length) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const cx = ((e.clientX - rect.left) / rect.width) * canvas.width;
-      const cy = ((e.clientY - rect.top) / rect.height) * canvas.height;
+      const { x: cx, y: cy } = canvasPoint(e);
+      const w = canvas.width;
+      const h = canvas.height;
 
+      // Check resize handles / inset bodies first (topmost = last drawn = last in array)
+      for (let i = opts.zoomInsets.length - 1; i >= 0; i--) {
+        const inset = opts.zoomInsets[i];
+        const ix = inset.x * w;
+        const iy = inset.y * h;
+        const isize = inset.size * Math.min(w, h);
+        const handle = Math.max(10, isize * 0.07);
+
+        const onHandle =
+          cx >= ix + isize - handle && cx <= ix + isize + handle / 2 &&
+          cy >= iy + isize - handle && cy <= iy + isize + handle / 2;
+        if (onHandle) {
+          dragRef.current = { mode: "resize", index: i, offsetX: 0, offsetY: 0 };
+          return;
+        }
+
+        const inBody = cx >= ix && cx <= ix + isize && cy >= iy && cy <= iy + isize;
+        if (inBody) {
+          dragRef.current = { mode: "move", index: i, offsetX: cx - ix, offsetY: cy - iy };
+          return;
+        }
+      }
+
+      // Otherwise, check for a keypoint dot — toggle inset on/off
       let nearest: TrackedPoint | null = null;
       let nearestDist = Infinity;
       for (const p of points) {
-        const dist = Math.hypot(p.x * canvas.width - cx, p.y * canvas.height - cy);
+        const dist = Math.hypot(p.x * w - cx, p.y * h - cy);
         if (dist < nearestDist) { nearestDist = dist; nearest = p; }
       }
       const hitRadius = Math.max(opts.dotRadius * 2.5, 14);
       if (nearest && nearestDist <= hitRadius) {
-        set(
-          "zoomFocus",
-          opts.zoomFocus.includes(nearest.name)
-            ? opts.zoomFocus.filter((n) => n !== nearest!.name)
-            : [...opts.zoomFocus, nearest.name]
-        );
+        const existingIdx = opts.zoomInsets.findIndex((i) => i.point === nearest!.name);
+        if (existingIdx >= 0) {
+          set("zoomInsets", opts.zoomInsets.filter((_, i) => i !== existingIdx));
+        } else {
+          const pos = placeZoomInset(nearest.x, nearest.y, w, h, DEFAULT_INSET_SIZE);
+          const next: ZoomInsetState = { point: nearest.name, x: pos.x, y: pos.y, size: DEFAULT_INSET_SIZE };
+          set("zoomInsets", [...opts.zoomInsets, next]);
+        }
       }
     },
-    [opts.zoomInset, opts.zoomFocus, opts.dotRadius, points]
+    [opts.zoomInset, opts.zoomInsets, opts.dotRadius, points, canvasPoint]
   );
+
+  const handlePointerMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const { x: cx, y: cy } = canvasPoint(e);
+      const w = canvas.width;
+      const h = canvas.height;
+      const minDim = Math.min(w, h);
+
+      setOpts((o) => {
+        const inset = o.zoomInsets[drag.index];
+        if (!inset) return o;
+        let next: ZoomInsetState;
+        if (drag.mode === "move") {
+          const x = (cx - drag.offsetX) / w;
+          const y = (cy - drag.offsetY) / h;
+          const maxX = 1 - inset.size * minDim / w;
+          const maxY = 1 - inset.size * minDim / h;
+          next = { ...inset, x: Math.min(Math.max(0, x), Math.max(0, maxX)), y: Math.min(Math.max(0, y), Math.max(0, maxY)) };
+        } else {
+          const ix = inset.x * w;
+          const iy = inset.y * h;
+          const size = Math.max(cx - ix, cy - iy) / minDim;
+          next = { ...inset, size: Math.min(MAX_INSET_SIZE, Math.max(MIN_INSET_SIZE, size)) };
+        }
+        const insets = [...o.zoomInsets];
+        insets[drag.index] = next;
+        return { ...o, zoomInsets: insets };
+      });
+    },
+    [canvasPoint]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -251,8 +344,11 @@ export default function TrackerStudio() {
         ) : (
           <canvas
             ref={canvasRef}
-            onClick={handleCanvasClick}
-            title={opts.zoomInset ? "Clique em um ponto para focar o zoom de detalhe" : undefined}
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerUp}
+            onMouseLeave={handlePointerUp}
+            title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
             className={`max-h-full max-w-full rounded-lg shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
           />
         )}
@@ -371,13 +467,13 @@ export default function TrackerStudio() {
             {opts.zoomInset && (
               <div className="flex items-center justify-between gap-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5">
                 <span className="text-[10px] leading-snug text-muted">
-                  {opts.zoomFocus.length
-                    ? `Foco: ${opts.zoomFocus.length} ponto${opts.zoomFocus.length > 1 ? "s" : ""}`
-                    : "Clique em pontos da imagem para focar o zoom (pode escolher vários)"}
+                  {opts.zoomInsets.length
+                    ? `${opts.zoomInsets.length} zoom${opts.zoomInsets.length > 1 ? "s" : ""} — arraste para mover, puxe o canto para redimensionar`
+                    : "Clique em pontos da imagem para criar zooms (pode escolher vários)"}
                 </span>
-                {opts.zoomFocus.length > 0 && (
+                {opts.zoomInsets.length > 0 && (
                   <button
-                    onClick={() => set("zoomFocus", [])}
+                    onClick={() => set("zoomInsets", [])}
                     className="shrink-0 rounded border border-line px-2 py-1 text-[10px] text-muted hover:border-muted hover:text-[var(--text)]"
                   >
                     Limpar
@@ -385,6 +481,47 @@ export default function TrackerStudio() {
                 )}
               </div>
             )}
+          </Section>
+
+          {/* Marker / box shape — extra creative tracking styles */}
+          <Section title="Estilo do tracking">
+            <div>
+              <span className="label mb-1.5 block">Forma dos pontos</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {MARKER_STYLES.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => set("markerStyle", m.id)}
+                    className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                      opts.markerStyle === m.id
+                        ? "border-red bg-red/10 text-[var(--text)]"
+                        : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Toggle label="Glow nos pontos" value={opts.dotGlow} onChange={(v) => set("dotGlow", v)} />
+            <div>
+              <span className="label mb-1.5 block">Forma dos quadros</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BOX_STYLES.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => set("boxStyle", b.id)}
+                    className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                      opts.boxStyle === b.id
+                        ? "border-red bg-red/10 text-[var(--text)]"
+                        : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
+                    }`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </Section>
 
           {/* Line style */}

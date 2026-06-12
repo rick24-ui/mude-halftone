@@ -7,6 +7,18 @@ export interface TrackedPoint {
 
 export type ImageFilter = "none" | "invert" | "ascii" | "duotone" | "posterize" | "glitch" | "pixelate";
 
+export type MarkerStyle = "dot" | "cross" | "ring" | "square" | "triangle";
+export type BoxStyle = "rect" | "corners";
+
+// A user-placed zoom inset — tied to a keypoint, but freely draggable and
+// resizable on the canvas. Coordinates/size are normalized 0–1.
+export interface ZoomInsetState {
+  point: string;
+  x: number;
+  y: number;
+  size: number;
+}
+
 export interface DrawOptions {
   color: string;
   showKeypoints: boolean;
@@ -19,9 +31,9 @@ export interface DrawOptions {
   grain: boolean;
   vignette: boolean;
   zoomInset: boolean;
-  // Names of keypoints to show a zoom inset for — toggled by clicking dots
-  // on the canvas. Empty means no focus points, so no inset is drawn.
-  zoomFocus: string[];
+  // Zoom insets created by clicking keypoints — each one is independently
+  // draggable and resizable by the user.
+  zoomInsets: ZoomInsetState[];
   // Editable label texts — parallel to REGIONS (by index) plus the zoom inset label
   regionLabels: string[];
   zoomLabel: string;
@@ -32,7 +44,36 @@ export interface DrawOptions {
   // 0–1: how much the region bounding boxes randomly drift in position,
   // size and rotation on every redraw — for a dynamic, glitchy feel
   boxJitter: number;
+  // Adds a soft glow halo around keypoint markers
+  dotGlow: boolean;
+  // Shape used to render keypoint markers
+  markerStyle: MarkerStyle;
+  // Style used to render region bounding boxes
+  boxStyle: BoxStyle;
 }
+
+export interface MarkerStyleDef {
+  id: MarkerStyle;
+  label: string;
+}
+
+export const MARKER_STYLES: MarkerStyleDef[] = [
+  { id: "dot", label: "Ponto" },
+  { id: "cross", label: "Cruz" },
+  { id: "ring", label: "Anel" },
+  { id: "square", label: "Quadrado" },
+  { id: "triangle", label: "Triângulo" },
+];
+
+export interface BoxStyleDef {
+  id: BoxStyle;
+  label: string;
+}
+
+export const BOX_STYLES: BoxStyleDef[] = [
+  { id: "rect", label: "Retângulo" },
+  { id: "corners", label: "Cantos" },
+];
 
 export interface LabelFontDef {
   id: string;
@@ -176,12 +217,109 @@ function uid() {
   return String(Math.floor(Math.random() * 1e9)).padStart(9, "0");
 }
 
+// Draws a single keypoint marker in the chosen shape, optionally with a glow halo
+function drawMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  style: MarkerStyle,
+  glow: boolean,
+  color: string
+) {
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = r * 3.5;
+  }
+  switch (style) {
+    case "cross":
+      ctx.beginPath();
+      ctx.moveTo(x - r, y);
+      ctx.lineTo(x + r, y);
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x, y + r);
+      ctx.stroke();
+      break;
+    case "ring":
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    case "square":
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      break;
+    case "triangle":
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r * 0.866, y + r * 0.5);
+      ctx.lineTo(x - r * 0.866, y + r * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case "dot":
+    default:
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Strokes a region box either as a full rectangle or as camera-style corner
+// brackets — drawn around the (possibly rotated) local origin
+function strokeBox(ctx: CanvasRenderingContext2D, w: number, h: number, style: BoxStyle) {
+  if (style === "corners") {
+    const len = Math.min(w, h) * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(0, len); ctx.lineTo(0, 0); ctx.lineTo(len, 0);
+    ctx.moveTo(w - len, 0); ctx.lineTo(w, 0); ctx.lineTo(w, len);
+    ctx.moveTo(w, h - len); ctx.lineTo(w, h); ctx.lineTo(w - len, h);
+    ctx.moveTo(len, h); ctx.lineTo(0, h); ctx.lineTo(0, h - len);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(0, 0, w, h);
+  }
+}
+
+// Picks a default position (normalized 0–1, top-left) for a new zoom inset
+// so it doesn't land on top of the tracked area it's zooming into. Tries a
+// few random spots, then falls back to the opposite corner of the canvas.
+export function placeZoomInset(
+  pointX: number,
+  pointY: number,
+  canvasW: number,
+  canvasH: number,
+  size: number
+): { x: number; y: number } {
+  const insetPx = size * Math.min(canvasW, canvasH);
+  const minDim = Math.min(canvasW, canvasH);
+  // Exclusion zone around the tracked point — roughly the crop area plus margin
+  const exclude = minDim * 0.16 * 1.5;
+  const targetX = pointX * canvasW;
+  const targetY = pointY * canvasH;
+  const exLeft = targetX - exclude / 2;
+  const exTop = targetY - exclude / 2;
+
+  for (let i = 0; i < 24; i++) {
+    const x = Math.random() * Math.max(1, canvasW - insetPx);
+    const y = Math.random() * Math.max(1, canvasH - insetPx);
+    const overlaps = x < exLeft + exclude && x + insetPx > exLeft && y < exTop + exclude && y + insetPx > exTop;
+    if (!overlaps) return { x: x / canvasW, y: y / canvasH };
+  }
+  const x = pointX < 0.5 ? canvasW - insetPx : 0;
+  const y = pointY < 0.5 ? canvasH - insetPx : 0;
+  return { x: x / canvasW, y: y / canvasH };
+}
+
 export function drawOverlay(
   canvas: HTMLCanvasElement,
   src: HTMLImageElement | HTMLCanvasElement,
   points: TrackedPoint[],
-  opts: DrawOptions
+  opts: DrawOptions,
+  renderOpts: { interactive?: boolean } = {}
 ): void {
+  const interactive = renderOpts.interactive ?? false;
   const w = canvas.width;
   const h = canvas.height;
   const ctx = canvas.getContext("2d")!;
@@ -219,15 +357,13 @@ export function drawOverlay(
   // ── Keypoint dots ───────────────────────────────────────────────────────
   if (opts.showKeypoints) {
     points.forEach((p) => {
-      ctx.beginPath();
-      ctx.arc(px(p), py(p), opts.dotRadius, 0, Math.PI * 2);
-      ctx.fill();
+      drawMarker(ctx, px(p), py(p), opts.dotRadius, opts.markerStyle, opts.dotGlow, opts.color);
     });
   }
 
-  // ── Zoom-focus rings — highlight the keypoints clicked by the user ──────
-  const focusPoints = opts.zoomFocus
-    .map((name) => map.get(name))
+  // ── Zoom-focus rings — highlight the keypoints the user attached insets to
+  const focusPoints = opts.zoomInsets
+    .map((inset) => map.get(inset.point))
     .filter((p): p is TrackedPoint => p !== undefined);
 
   focusPoints.forEach((focusPoint) => {
@@ -271,16 +407,18 @@ export function drawOverlay(
     let angle = 0;
 
     // Random drift in position, size and rotation — keeps the boxes feeling
-    // alive and editorial instead of rigidly tracking the body
+    // alive and editorial instead of rigidly tracking the body. Pushed hard
+    // so the effect reads clearly even at moderate slider values.
     if (opts.boxJitter > 0) {
       const j = opts.boxJitter;
       const cx = bx + bw / 2;
       const cy = by + bh / 2;
-      bw *= 1 + (Math.random() - 0.5) * 0.6 * j;
-      bh *= 1 + (Math.random() - 0.5) * 0.6 * j;
-      bx = cx - bw / 2 + (Math.random() - 0.5) * bw * 0.5 * j;
-      by = cy - bh / 2 + (Math.random() - 0.5) * bh * 0.5 * j;
-      angle = (Math.random() - 0.5) * 0.35 * j;
+      bw *= 1 + (Math.random() - 0.5) * 1.6 * j;
+      bh *= 1 + (Math.random() - 0.5) * 1.6 * j;
+      const drift = Math.min(w, h) * 0.35 * j;
+      bx = cx - bw / 2 + (Math.random() - 0.5) * 2 * drift;
+      by = cy - bh / 2 + (Math.random() - 0.5) * 2 * drift;
+      angle = (Math.random() - 0.5) * 0.7 * j;
     }
 
     if (opts.showBoxes) {
@@ -289,9 +427,11 @@ export function drawOverlay(
       if (angle !== 0) {
         ctx.translate(bx + bw / 2, by + bh / 2);
         ctx.rotate(angle);
-        ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
+        ctx.translate(-bw / 2, -bh / 2);
+        strokeBox(ctx, bw, bh, opts.boxStyle);
       } else {
-        ctx.strokeRect(bx, by, bw, bh);
+        ctx.translate(bx, by);
+        strokeBox(ctx, bw, bh, opts.boxStyle);
       }
       ctx.restore();
     }
@@ -309,57 +449,58 @@ export function drawOverlay(
     }
   });
 
-  // ── Zoom insets — cropped close-ups of each focused keypoint, scattered
-  // and overlapping at random positions/sizes/rotations for an editorial
-  // collage look ────────────────────────────────────────────────────────
-  if (opts.zoomInset && focusPoints.length) {
+  // ── Zoom insets — cropped close-ups placed by the user, who can freely
+  // drag and resize each one. No rotation, no drop shadow — clean,
+  // axis-aligned "concept" frames ──────────────────────────────────────
+  if (opts.zoomInset && opts.zoomInsets.length) {
     const scaleX = (src instanceof HTMLImageElement ? src.naturalWidth : src.width) / w;
     const scaleY = (src instanceof HTMLImageElement ? src.naturalHeight : src.height) / h;
     const cropSize = Math.min(w, h) * 0.16;
 
-    focusPoints.forEach((focusPoint) => {
+    opts.zoomInsets.forEach((inset) => {
+      const focusPoint = map.get(inset.point);
+      if (!focusPoint) return;
+
       const cropX = Math.max(0, px(focusPoint) - cropSize / 2);
       const cropY = Math.max(0, py(focusPoint) - cropSize / 2);
 
-      const insetSize = Math.min(w, h) * (0.18 + Math.random() * 0.16);
-      const insetX = Math.random() * (w - insetSize);
-      const insetY = Math.random() * (h - insetSize);
-      const angle = (Math.random() - 0.5) * 0.3;
+      const insetSize = inset.size * Math.min(w, h);
+      const insetX = inset.x * w;
+      const insetY = inset.y * h;
 
       ctx.save();
-      ctx.translate(insetX + insetSize / 2, insetY + insetSize / 2);
-      ctx.rotate(angle);
-      ctx.translate(-insetSize / 2, -insetSize / 2);
-
-      ctx.shadowColor = "rgba(0,0,0,0.5)";
-      ctx.shadowBlur = 18;
-      ctx.shadowOffsetY = 6;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, insetSize, insetSize);
-
-      ctx.shadowColor = "transparent";
       ctx.beginPath();
-      ctx.rect(0, 0, insetSize, insetSize);
+      ctx.rect(insetX, insetY, insetSize, insetSize);
       ctx.clip();
       ctx.drawImage(
         src,
         cropX * scaleX, cropY * scaleY, cropSize * scaleX, cropSize * scaleY,
-        0, 0, insetSize, insetSize
+        insetX, insetY, insetSize, insetSize
       );
+      ctx.restore();
 
+      ctx.save();
       ctx.strokeStyle = opts.color;
       ctx.lineWidth = opts.lineWidth;
       ctx.globalAlpha = 0.85;
-      ctx.strokeRect(0, 0, insetSize, insetSize);
+      ctx.strokeRect(insetX, insetY, insetSize, insetSize);
 
       if (opts.showLabels) {
         const lbl = `${opts.zoomLabel.trim() || DEFAULT_ZOOM_LABEL} ${uid()}`;
         ctx.globalAlpha = 0.9;
         const tw = ctx.measureText(lbl).width;
         ctx.fillStyle = "rgba(0,0,0,0.45)";
-        ctx.fillRect(0, insetSize + 2, tw + 8, fontSize + 4);
+        ctx.fillRect(insetX, insetY + insetSize + 2, tw + 8, fontSize + 4);
         ctx.fillStyle = opts.color;
-        ctx.fillText(lbl, 4, insetSize + 4);
+        ctx.fillText(lbl, insetX + 4, insetY + insetSize + 4);
+      }
+
+      // Resize handle — shown only in the interactive editor, not on export
+      if (interactive) {
+        const handle = Math.max(10, insetSize * 0.07);
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = opts.color;
+        ctx.fillRect(insetX + insetSize - handle, insetY + insetSize - handle, handle, handle);
       }
 
       ctx.globalAlpha = 1;
