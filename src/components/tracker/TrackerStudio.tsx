@@ -3,12 +3,15 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import {
   detectPoints,
+  detectEnvironmentPoints,
   drawOverlay,
   loadDetector,
   placeZoomInset,
   TrackedPoint,
   DrawOptions,
   ZoomInsetState,
+  TrackMode,
+  MAX_VIDEO_DURATION,
   DEFAULT_REGION_LABELS,
   DEFAULT_ZOOM_LABEL,
   DEFAULT_LABEL_FONT,
@@ -23,6 +26,26 @@ import { downloadBlob, timestampName } from "@/lib/export";
 // ─── Types ────────────────────────────────────────────────────────────────
 
 type Status = "idle" | "loading-model" | "detecting" | "done" | "no-person" | "error";
+type MediaType = "image" | "video";
+
+const TRACK_MODES: { id: TrackMode; label: string; hint: string }[] = [
+  { id: "person", label: "Pessoa", hint: "Detecta o corpo da pessoa com IA (pose)." },
+  { id: "environment", label: "Ambiente", hint: "Rastreia pontos de contraste do ambiente — fundos, objetos, texturas." },
+];
+
+function formatTime(s: number): string {
+  return `${s.toFixed(1)}s`;
+}
+
+// Draws an <img> onto a same-size offscreen canvas — used so the environment
+// feature detector (which reads pixel data) can run on still images too
+function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  c.getContext("2d")!.drawImage(img, 0, 0);
+  return c;
+}
 
 const COLORS = [
   { id: "white", label: "White", hex: "#ffffff" },
@@ -99,18 +122,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function TrackerStudio() {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<MediaType>("image");
   const [points, setPoints] = useState<TrackedPoint[]>([]);
   const [opts, setOpts] = useState<DrawOptions>(DEFAULT);
   const [status, setStatus] = useState<Status>("idle");
   const [dragging, setDragging] = useState(false);
   const [autoDetect, setAutoDetect] = useState(true);
+  const [trackMode, setTrackMode] = useState<TrackMode>("person");
   // Bumped by the "Embaralhar" button to force a redraw with fresh random
   // box jitter / inset placement, without otherwise changing opts
   const [shuffleTick, setShuffleTick] = useState(0);
 
+  // Video playback / timeline state
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [videoTruncated, setVideoTruncated] = useState(false);
+  const [exportingVideo, setExportingVideo] = useState(false);
+
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Offscreen canvas holding the current video frame — fed into detection
+  // and drawOverlay as the "source" image
+  const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastDetectRef = useRef(0);
 
   const set = <K extends keyof DrawOptions>(key: K, val: DrawOptions[K]) =>
     setOpts((o) => ({ ...o, [key]: val }));
@@ -119,7 +158,7 @@ export default function TrackerStudio() {
   // (the <canvas> only enters the DOM after imgSrc is set, so this can't
   // happen synchronously inside the image's onload handler).
   useEffect(() => {
-    if (!imgSrc || !canvasRef.current || !imgRef.current) return;
+    if (mediaType !== "image" || !imgSrc || !canvasRef.current || !imgRef.current) return;
     const img = imgRef.current;
     const maxW = 900;
     const scale = Math.min(1, maxW / img.naturalWidth);
@@ -127,25 +166,39 @@ export default function TrackerStudio() {
     canvasRef.current.height = Math.round(img.naturalHeight * scale);
     const ctx = canvasRef.current.getContext("2d")!;
     ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
-  }, [imgSrc]);
+  }, [imgSrc, mediaType]);
 
   // Redraw whenever options or points change (or "Embaralhar" is pressed)
   useEffect(() => {
-    if (!canvasRef.current || !imgRef.current || !points.length) return;
+    if (mediaType !== "image" || !canvasRef.current || !imgRef.current || !points.length) return;
     drawOverlay(canvasRef.current, imgRef.current, points, opts, { interactive: true });
-  }, [opts, points, shuffleTick]);
+  }, [opts, points, shuffleTick, mediaType]);
 
-  const mountImage = useCallback((file: File) => {
+  const mountFile = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      imgRef.current = img;
-      setImgSrc(url);
-      setPoints([]);
-      setStatus("idle");
-      set("zoomInsets", []);
-    };
-    img.src = url;
+    setPoints([]);
+    setStatus("idle");
+    setOpts((o) => ({ ...o, zoomInsets: [] }));
+
+    if (file.type.startsWith("video/")) {
+      imgRef.current = null;
+      setImgSrc(null);
+      setMediaType("video");
+      setPlaying(false);
+      setCurrentTime(0);
+      setVideoDuration(0);
+      setVideoTruncated(false);
+      setVideoSrc(url);
+    } else {
+      setVideoSrc(null);
+      setMediaType("image");
+      const img = new Image();
+      img.onload = () => {
+        imgRef.current = img;
+        setImgSrc(url);
+      };
+      img.src = url;
+    }
   }, []);
 
   // Tracks an in-progress drag (move or resize) of a zoom inset
@@ -265,21 +318,31 @@ export default function TrackerStudio() {
       e.preventDefault();
       setDragging(false);
       const f = e.dataTransfer.files[0];
-      if (f?.type.startsWith("image/")) mountImage(f);
+      if (f?.type.startsWith("image/") || f?.type.startsWith("video/")) mountFile(f);
     },
-    [mountImage]
+    [mountFile]
   );
 
   const handleFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const f = e.target.files?.[0];
-      if (f) mountImage(f);
+      if (f) mountFile(f);
     },
-    [mountImage]
+    [mountFile]
   );
 
   const detect = useCallback(async () => {
     if (!imgRef.current) return;
+
+    if (trackMode === "environment") {
+      setStatus("detecting");
+      const pts = detectEnvironmentPoints(imageToCanvas(imgRef.current), 6);
+      setPoints(pts);
+      if (canvasRef.current) drawOverlay(canvasRef.current, imgRef.current, pts, opts);
+      setStatus("done");
+      return;
+    }
+
     setStatus("loading-model");
     const ok = await loadDetector();
     if (!ok) { setStatus("error"); return; }
@@ -289,15 +352,248 @@ export default function TrackerStudio() {
     setPoints(pts);
     if (canvasRef.current) drawOverlay(canvasRef.current, imgRef.current, pts, opts);
     setStatus("done");
-  }, [opts]);
+  }, [opts, trackMode]);
 
   // Auto-detect right after a new image is mounted, when enabled
   useEffect(() => {
-    if (!imgSrc || !autoDetect) return;
+    if (mediaType !== "image" || !imgSrc || !autoDetect) return;
     void detect();
     // Only re-trigger when a *new* image is mounted — not on every opts/detect change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imgSrc, autoDetect]);
+  }, [imgSrc, autoDetect, mediaType]);
+
+  // ── Video ────────────────────────────────────────────────────────────────
+
+  // Called once the video's dimensions/duration are known — sizes the
+  // display canvas and the offscreen frame buffer, and applies the
+  // MAX_VIDEO_DURATION cap on the timeline.
+  const handleVideoLoaded = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    if (!frameCanvasRef.current) frameCanvasRef.current = document.createElement("canvas");
+    const frameCanvas = frameCanvasRef.current;
+
+    const maxW = 900;
+    const scale = Math.min(1, maxW / video.videoWidth);
+    const w = Math.round(video.videoWidth * scale);
+    const h = Math.round(video.videoHeight * scale);
+    canvas.width = w;
+    canvas.height = h;
+    frameCanvas.width = w;
+    frameCanvas.height = h;
+
+    setVideoDuration(Math.min(video.duration, MAX_VIDEO_DURATION));
+    setVideoTruncated(video.duration > MAX_VIDEO_DURATION + 0.05);
+    // Nudge off zero so a "seeked" event always fires, triggering the first
+    // frame draw + detection below
+    video.currentTime = 0.001;
+  }, []);
+
+  // Grabs the current video frame into the offscreen buffer and redraws the
+  // overlay on top of it
+  const drawVideoFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const frameCanvas = frameCanvasRef.current;
+    if (!video || !canvas || !frameCanvas) return;
+    frameCanvas.getContext("2d")!.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+    drawOverlay(canvas, frameCanvas, points, opts, { interactive: true });
+  }, [points, opts]);
+
+  // Full detection pass on the current frame — updates status, used on
+  // initial load / scrub / manual "Detectar" click
+  const detectVideoFrame = useCallback(async () => {
+    const frameCanvas = frameCanvasRef.current;
+    if (!frameCanvas) return;
+
+    if (trackMode === "environment") {
+      setStatus("detecting");
+      setPoints(detectEnvironmentPoints(frameCanvas, 6));
+      setStatus("done");
+      return;
+    }
+
+    setStatus("loading-model");
+    const ok = await loadDetector();
+    if (!ok) { setStatus("error"); return; }
+    setStatus("detecting");
+    const pts = await detectPoints(frameCanvas);
+    setPoints(pts);
+    setStatus(pts.length ? "done" : "no-person");
+  }, [trackMode]);
+
+  // Lightweight detection used inside the playback loop — skips status
+  // churn so the badge doesn't flicker every ~150ms while playing
+  const detectVideoFrameQuiet = useCallback(async () => {
+    const frameCanvas = frameCanvasRef.current;
+    if (!frameCanvas) return;
+    if (trackMode === "environment") {
+      setPoints(detectEnvironmentPoints(frameCanvas, 6));
+    } else {
+      if (!(await loadDetector())) return;
+      const pts = await detectPoints(frameCanvas);
+      if (pts.length) setPoints(pts);
+    }
+  }, [trackMode]);
+
+  // Redraw whenever a new frame is grabbed via scrubbing
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || mediaType !== "video") return;
+    const onSeeked = () => {
+      drawVideoFrame();
+      setCurrentTime(video.currentTime);
+      if (autoDetect) void detectVideoFrame();
+    };
+    video.addEventListener("seeked", onSeeked);
+    return () => video.removeEventListener("seeked", onSeeked);
+  }, [mediaType, drawVideoFrame, detectVideoFrame, autoDetect]);
+
+  // Redraw the current frame when options/points change while paused
+  useEffect(() => {
+    if (mediaType !== "video" || playing) return;
+    drawVideoFrame();
+  }, [opts, points, shuffleTick, mediaType, playing, drawVideoFrame]);
+
+  // Re-run detection on the current frame/image when the track mode changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (mediaType === "image" && imgSrc) void detect();
+    else if (mediaType === "video" && videoSrc) void detectVideoFrame();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackMode]);
+
+  // Playback loop — draws every frame, runs throttled detection in the
+  // background, and stops at the end of the (possibly truncated) timeline
+  useEffect(() => {
+    if (!playing) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const step = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (v.currentTime >= videoDuration || v.ended) {
+        v.pause();
+        setPlaying(false);
+        return;
+      }
+      drawVideoFrame();
+      setCurrentTime(v.currentTime);
+      const now = performance.now();
+      if (now - lastDetectRef.current > 150) {
+        lastDetectRef.current = now;
+        void detectVideoFrameQuiet();
+      }
+      rafRef.current = requestAnimationFrame(step);
+    };
+
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [playing, videoDuration, drawVideoFrame, detectVideoFrameQuiet]);
+
+  const togglePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (playing) {
+      video.pause();
+      setPlaying(false);
+    } else {
+      if (video.currentTime >= videoDuration) video.currentTime = 0;
+      lastDetectRef.current = 0;
+      void video.play();
+      setPlaying(true);
+    }
+  }, [playing, videoDuration]);
+
+  const handleSeek = useCallback((t: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (playing) {
+      video.pause();
+      setPlaying(false);
+    }
+    video.currentTime = t;
+  }, [playing]);
+
+  // Runs detection on the current source, whether it's a still image or a video frame
+  const runDetect = useCallback(() => {
+    if (mediaType === "video") return detectVideoFrame();
+    return detect();
+  }, [mediaType, detect, detectVideoFrame]);
+
+  const exportVideoFramePNG = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !points.length) return;
+    const frameSrc = document.createElement("canvas");
+    frameSrc.width = video.videoWidth;
+    frameSrc.height = video.videoHeight;
+    frameSrc.getContext("2d")!.drawImage(video, 0, 0, frameSrc.width, frameSrc.height);
+
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = video.videoWidth;
+    exportCanvas.height = video.videoHeight;
+    drawOverlay(exportCanvas, frameSrc, points, opts);
+    exportCanvas.toBlob(
+      (blob) => { if (blob) downloadBlob(blob, timestampName("rc-tracker-frame", "png")); },
+      "image/png"
+    );
+  }, [points, opts]);
+
+  // Records the canvas (with the live overlay) while the clamped video plays
+  // through once, then downloads the result as WebM
+  const exportWebM = useCallback(async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !videoDuration) return;
+
+    setExportingVideo(true);
+    try {
+      video.pause();
+      setPlaying(false);
+      await new Promise<void>((resolve) => {
+        const onSeeked = () => { video.removeEventListener("seeked", onSeeked); resolve(); };
+        video.addEventListener("seeked", onSeeked);
+        video.currentTime = 0;
+      });
+
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : "video/webm";
+      const stream = canvas.captureStream(30);
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      const stopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve(); });
+
+      recorder.start();
+      lastDetectRef.current = 0;
+      await video.play();
+      setPlaying(true);
+
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          const v = videoRef.current;
+          if (!v || v.currentTime >= videoDuration || v.ended) { resolve(); return; }
+          requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      });
+
+      video.pause();
+      setPlaying(false);
+      recorder.stop();
+      await stopped;
+
+      const blob = new Blob(chunks, { type: "video/webm" });
+      downloadBlob(blob, timestampName("rc-tracker", "webm"));
+    } finally {
+      setExportingVideo(false);
+    }
+  }, [videoDuration]);
 
   const exportPNG = useCallback(() => {
     if (!imgRef.current || !points.length) return;
@@ -326,7 +622,7 @@ export default function TrackerStudio() {
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
       >
-        {!imgSrc ? (
+        {!imgSrc && !videoSrc ? (
           <div
             className={`flex flex-col items-center gap-5 rounded-xl border-2 border-dashed p-20 text-center transition-colors ${
               dragging ? "border-red bg-red/5" : "border-line"
@@ -334,10 +630,10 @@ export default function TrackerStudio() {
           >
             <div className="space-y-1">
               <p className="text-sm font-semibold tracking-tight text-[var(--text)]">
-                Arraste uma imagem com pessoa
+                Arraste uma imagem ou vídeo com pessoa
               </p>
               <p className="text-[11px] text-muted">
-                PNG, JPG, WEBP — o modelo IA detecta o corpo automaticamente
+                PNG, JPG, WEBP — ou MP4/WEBM de até {MAX_VIDEO_DURATION}s. O modelo IA detecta o corpo automaticamente
               </p>
             </div>
             <button
@@ -346,31 +642,76 @@ export default function TrackerStudio() {
             >
               Selecionar arquivo
             </button>
-            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+            <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
           </div>
         ) : (
-          <canvas
-            ref={canvasRef}
-            onMouseDown={handlePointerDown}
-            onMouseMove={handlePointerMove}
-            onMouseUp={handlePointerUp}
-            onMouseLeave={handlePointerUp}
-            title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
-            className={`max-h-full max-w-full rounded-lg shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
-          />
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3">
+            {mediaType === "video" && (
+              <video
+                ref={videoRef}
+                src={videoSrc ?? undefined}
+                onLoadedMetadata={handleVideoLoaded}
+                muted
+                playsInline
+                className="hidden"
+              />
+            )}
+            <canvas
+              ref={canvasRef}
+              onMouseDown={handlePointerDown}
+              onMouseMove={handlePointerMove}
+              onMouseUp={handlePointerUp}
+              onMouseLeave={handlePointerUp}
+              title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
+              className={`max-h-full max-w-full rounded-lg shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
+              style={mediaType === "video" ? { maxHeight: "calc(100% - 52px)" } : undefined}
+            />
+
+            {/* Timeline / playback controls */}
+            {mediaType === "video" && videoDuration > 0 && (
+              <div className="flex w-full max-w-[900px] items-center gap-3 rounded-lg border border-line bg-[var(--panel)] px-3 py-2">
+                <button
+                  onClick={togglePlay}
+                  className="shrink-0 rounded bg-red px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-90"
+                >
+                  {playing ? "Pausar" : "Tocar"}
+                </button>
+                <input
+                  className="rng flex-1"
+                  type="range" min={0} max={videoDuration} step={0.01}
+                  value={Math.min(currentTime, videoDuration)}
+                  onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                />
+                <span className="mono shrink-0 text-[11px] text-muted">
+                  {formatTime(currentTime)} / {formatTime(videoDuration)}
+                </span>
+              </div>
+            )}
+            {mediaType === "video" && videoTruncated && (
+              <p className="text-[10px] text-muted">
+                Vídeo maior que {MAX_VIDEO_DURATION}s — usando apenas os primeiros {MAX_VIDEO_DURATION}s
+              </p>
+            )}
+          </div>
         )}
 
         {/* Drag overlay */}
-        {imgSrc && dragging && (
+        {(imgSrc || videoSrc) && dragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-red bg-red/10">
-            <p className="text-sm font-semibold text-red">Soltar para trocar imagem</p>
+            <p className="text-sm font-semibold text-red">Soltar para trocar mídia</p>
           </div>
         )}
 
         {/* Status badge */}
         {busy && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full border border-line bg-[var(--panel)] px-4 py-2 text-[11px] text-muted">
-            {status === "loading-model" ? "Carregando modelo IA…" : "Detectando pontos do corpo…"}
+            {status === "loading-model" ? "Carregando modelo IA…" : "Detectando pontos…"}
+          </div>
+        )}
+
+        {exportingVideo && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full border border-line bg-[var(--panel)] px-4 py-2 text-[11px] text-muted">
+            Exportando vídeo…
           </div>
         )}
       </div>
@@ -382,10 +723,32 @@ export default function TrackerStudio() {
           {/* Detection behavior */}
           <Section title="Detecção">
             <Toggle
-              label="Detectar ao subir imagem"
+              label="Detectar ao subir mídia"
               value={autoDetect}
               onChange={setAutoDetect}
             />
+          </Section>
+
+          {/* What the tracker should lock onto */}
+          <Section title="Modo de captura">
+            <div className="grid grid-cols-2 gap-1.5">
+              {TRACK_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setTrackMode(m.id)}
+                  className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                    trackMode === m.id
+                      ? "border-red bg-red/10 text-[var(--text)]"
+                      : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] leading-snug text-muted">
+              {TRACK_MODES.find((m) => m.id === trackMode)?.hint}
+            </p>
           </Section>
 
           {/* Editable label texts */}
@@ -668,30 +1031,32 @@ export default function TrackerStudio() {
             <Toggle label="Vignette" value={opts.vignette} onChange={(v) => set("vignette", v)} />
           </Section>
 
-          {/* New image button */}
-          {imgSrc && (
+          {/* New media button */}
+          {(imgSrc || videoSrc) && (
             <button
               onClick={() => { inputRef.current?.click(); }}
               className="w-full rounded border border-line py-2 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
             >
-              Trocar imagem
+              Trocar mídia
             </button>
           )}
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
         </div>
 
         {/* Footer */}
         <div className="border-t border-line px-4 py-4 space-y-2">
           {status === "no-person" && (
-            <p className="text-center text-[11px] text-red">Nenhuma pessoa detectada na imagem</p>
+            <p className="text-center text-[11px] text-red">
+              {trackMode === "person" ? "Nenhuma pessoa detectada" : "Nenhum ponto detectado"}
+            </p>
           )}
           {status === "error" && (
             <p className="text-center text-[11px] text-red">Erro ao carregar modelo</p>
           )}
 
           <button
-            onClick={detect}
-            disabled={!imgSrc || busy}
+            onClick={runDetect}
+            disabled={(!imgSrc && !videoSrc) || busy}
             className="w-full rounded bg-red py-2.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
           >
             {status === "loading-model"
@@ -701,13 +1066,32 @@ export default function TrackerStudio() {
               : "Detectar automaticamente"}
           </button>
 
-          {status === "done" && (
+          {status === "done" && mediaType === "image" && (
             <button
               onClick={exportPNG}
               className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)]"
             >
               Exportar PNG
             </button>
+          )}
+
+          {mediaType === "video" && videoDuration > 0 && (
+            <>
+              <button
+                onClick={exportVideoFramePNG}
+                disabled={!points.length}
+                className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+              >
+                Exportar frame (PNG)
+              </button>
+              <button
+                onClick={exportWebM}
+                disabled={exportingVideo}
+                className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+              >
+                {exportingVideo ? "Exportando…" : "Exportar vídeo (WebM)"}
+              </button>
+            </>
           )}
         </div>
       </aside>

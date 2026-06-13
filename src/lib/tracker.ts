@@ -7,6 +7,14 @@ export interface TrackedPoint {
 
 export type ImageFilter = "none" | "invert" | "ascii" | "duotone" | "posterize" | "glitch" | "pixelate" | "thermal";
 
+// What the tracker should lock onto: the main subject (pose detection) or
+// high-contrast points in the surrounding environment
+export type TrackMode = "person" | "environment";
+
+// Hard cap on how much of an uploaded video is tracked/exported — keeps
+// per-frame pose detection and recording within a reasonable time budget
+export const MAX_VIDEO_DURATION = 12;
+
 export type MarkerStyle = "dot" | "cross" | "ring" | "square" | "triangle";
 export type BoxStyle = "rect" | "corners";
 
@@ -227,6 +235,50 @@ export async function detectPoints(
     console.error("Pose detection failed:", e);
     return [];
   }
+}
+
+// "Ambiente" track mode — instead of a pose model, picks the highest-contrast
+// points in the frame (simple gradient-magnitude feature detection) and
+// spreads them out so they read as tracked environment features rather than
+// a body. Re-run per frame, these drift and resettle with the scene —
+// useful for backgrounds, objects, textures, anything that isn't a person.
+export function detectEnvironmentPoints(
+  src: HTMLCanvasElement,
+  count = 6
+): TrackedPoint[] {
+  const sw = 80;
+  const sh = Math.max(1, Math.round((sw * src.height) / src.width));
+  const off = document.createElement("canvas");
+  off.width = sw;
+  off.height = sh;
+  const octx = off.getContext("2d")!;
+  octx.drawImage(src, 0, 0, sw, sh);
+  const data = octx.getImageData(0, 0, sw, sh).data;
+
+  const lum = new Float32Array(sw * sh);
+  for (let i = 0; i < sw * sh; i++) {
+    lum[i] = data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114;
+  }
+
+  const candidates: { x: number; y: number; score: number }[] = [];
+  for (let y = 1; y < sh - 1; y++) {
+    for (let x = 1; x < sw - 1; x++) {
+      const i = y * sw + x;
+      const gx = lum[i + 1] - lum[i - 1];
+      const gy = lum[i + sw] - lum[i - sw];
+      candidates.push({ x: x / sw, y: y / sh, score: Math.hypot(gx, gy) });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  const picked: TrackedPoint[] = [];
+  const minDist = 0.1;
+  for (const c of candidates) {
+    if (picked.length >= count) break;
+    if (picked.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < minDist)) continue;
+    picked.push({ name: `feat-${picked.length}`, x: c.x, y: c.y, score: 1 });
+  }
+  return picked;
 }
 
 // ─── Drawing ──────────────────────────────────────────────────────────────
