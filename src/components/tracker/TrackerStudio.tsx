@@ -37,6 +37,22 @@ function formatTime(s: number): string {
   return `${s.toFixed(1)}s`;
 }
 
+// How quickly displayed points catch up to the latest detection result —
+// lower = smoother/more delayed, higher = snappier/more jittery. Applied
+// every animation frame so motion (including zoom-inset crops) stays fluid
+// between the throttled detection passes.
+const SMOOTH = 0.25;
+
+function lerpPoints(prev: TrackedPoint[], target: TrackedPoint[], t: number): TrackedPoint[] {
+  if (!prev.length || prev.length !== target.length) return target;
+  const prevMap = new Map(prev.map((p) => [p.name, p]));
+  return target.map((tp) => {
+    const pp = prevMap.get(tp.name);
+    if (!pp) return tp;
+    return { ...tp, x: pp.x + (tp.x - pp.x) * t, y: pp.y + (tp.y - pp.y) * t };
+  });
+}
+
 // Draws an <img> onto a same-size offscreen canvas — used so the environment
 // feature detector (which reads pixel data) can run on still images too
 function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
@@ -150,6 +166,10 @@ export default function TrackerStudio() {
   const inputRef = useRef<HTMLInputElement>(null);
   const rafRef = useRef<number | null>(null);
   const lastDetectRef = useRef(0);
+  // Latest detection result (updated every ~throttle interval) and the
+  // smoothed/interpolated points actually drawn each frame during playback
+  const framePointsRef = useRef<TrackedPoint[]>([]);
+  const displayPointsRef = useRef<TrackedPoint[]>([]);
 
   const set = <K extends keyof DrawOptions>(key: K, val: DrawOptions[K]) =>
     setOpts((o) => ({ ...o, [key]: val }));
@@ -391,15 +411,21 @@ export default function TrackerStudio() {
   }, []);
 
   // Grabs the current video frame into the offscreen buffer and redraws the
-  // overlay on top of it
-  const drawVideoFrame = useCallback(() => {
+  // overlay on top of it. Accepts an optional points override so the
+  // playback loop can pass smoothed/interpolated positions.
+  const drawVideoFrame = useCallback((pts: TrackedPoint[] = points) => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const frameCanvas = frameCanvasRef.current;
     if (!video || !canvas || !frameCanvas) return;
     frameCanvas.getContext("2d")!.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
-    drawOverlay(canvas, frameCanvas, points, opts, { interactive: true });
+    drawOverlay(canvas, frameCanvas, pts, opts, { interactive: true });
   }, [points, opts]);
+
+  // Keep the smoothing target in sync with the latest detection result
+  useEffect(() => {
+    framePointsRef.current = points;
+  }, [points]);
 
   // Full detection pass on the current frame — updates status, used on
   // initial load / scrub / manual "Detectar" click
@@ -479,10 +505,14 @@ export default function TrackerStudio() {
         setPlaying(false);
         return;
       }
-      drawVideoFrame();
+      // Interpolate toward the latest detection result every frame, so
+      // points (and anything anchored to them, like zoom insets) glide
+      // smoothly instead of snapping every ~throttle interval
+      displayPointsRef.current = lerpPoints(displayPointsRef.current, framePointsRef.current, SMOOTH);
+      drawVideoFrame(displayPointsRef.current);
       setCurrentTime(v.currentTime);
       const now = performance.now();
-      if (now - lastDetectRef.current > 150) {
+      if (now - lastDetectRef.current > 100) {
         lastDetectRef.current = now;
         void detectVideoFrameQuiet();
       }
@@ -504,10 +534,13 @@ export default function TrackerStudio() {
     } else {
       if (video.currentTime >= videoDuration) video.currentTime = 0;
       lastDetectRef.current = 0;
+      // Snap the smoothing baseline to the current points so playback
+      // doesn't lerp in from a stale position
+      displayPointsRef.current = points;
       void video.play();
       setPlaying(true);
     }
-  }, [playing, videoDuration]);
+  }, [playing, videoDuration, points]);
 
   const handleSeek = useCallback((t: number) => {
     const video = videoRef.current;
@@ -525,6 +558,15 @@ export default function TrackerStudio() {
     return detect();
   }, [mediaType, detect, detectVideoFrame]);
 
+  // Scales line/dot sizes from the on-screen (downscaled) canvas to the
+  // source video's native resolution, so exports look proportionally the
+  // same as the live preview instead of having hairline strokes
+  const exportOptsAt = useCallback((targetW: number): DrawOptions => {
+    const displayW = canvasRef.current?.width || targetW;
+    const scale = targetW / displayW;
+    return { ...opts, lineWidth: opts.lineWidth * scale, dotRadius: opts.dotRadius * scale };
+  }, [opts]);
+
   const exportVideoFramePNG = useCallback(() => {
     const video = videoRef.current;
     if (!video || !points.length) return;
@@ -536,19 +578,19 @@ export default function TrackerStudio() {
     const exportCanvas = document.createElement("canvas");
     exportCanvas.width = video.videoWidth;
     exportCanvas.height = video.videoHeight;
-    drawOverlay(exportCanvas, frameSrc, points, opts);
+    drawOverlay(exportCanvas, frameSrc, points, exportOptsAt(video.videoWidth));
     exportCanvas.toBlob(
       (blob) => { if (blob) downloadBlob(blob, timestampName("rc-tracker-frame", "png")); },
       "image/png"
     );
-  }, [points, opts]);
+  }, [points, exportOptsAt]);
 
-  // Records the canvas (with the live overlay) while the clamped video plays
-  // through once, then downloads the result as WebM
+  // Records a dedicated full-resolution offscreen canvas (matching the
+  // source video's native size) with the live overlay while the clamped
+  // video plays through once, then downloads the result as WebM
   const exportWebM = useCallback(async () => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || !videoDuration) return;
+    if (!video || !videoDuration) return;
 
     setExportingVideo(true);
     try {
@@ -560,27 +602,47 @@ export default function TrackerStudio() {
         video.currentTime = 0;
       });
 
+      const exportW = video.videoWidth;
+      const exportH = video.videoHeight;
+      const exportOpts = exportOptsAt(exportW);
+
+      const exportFrame = document.createElement("canvas");
+      exportFrame.width = exportW;
+      exportFrame.height = exportH;
+      const exportFrameCtx = exportFrame.getContext("2d")!;
+
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = exportW;
+      exportCanvas.height = exportH;
+
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
         ? "video/webm;codecs=vp9"
         : "video/webm";
-      const stream = canvas.captureStream(30);
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const stream = exportCanvas.captureStream(30);
+      // High bitrate scaled to resolution — keeps the export close to source quality
+      const videoBitsPerSecond = Math.min(50_000_000, Math.round(exportW * exportH * 30 * 0.08));
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       const stopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve(); });
 
+      let exportDisplayPoints = framePointsRef.current;
       recorder.start();
       lastDetectRef.current = 0;
+      displayPointsRef.current = points;
       await video.play();
       setPlaying(true);
 
       await new Promise<void>((resolve) => {
-        const check = () => {
+        const tick = () => {
           const v = videoRef.current;
           if (!v || v.currentTime >= videoDuration || v.ended) { resolve(); return; }
-          requestAnimationFrame(check);
+          exportFrameCtx.drawImage(v, 0, 0, exportW, exportH);
+          exportDisplayPoints = lerpPoints(exportDisplayPoints, framePointsRef.current, SMOOTH);
+          drawOverlay(exportCanvas, exportFrame, exportDisplayPoints, exportOpts);
+          requestAnimationFrame(tick);
         };
-        requestAnimationFrame(check);
+        requestAnimationFrame(tick);
       });
 
       video.pause();
@@ -593,7 +655,7 @@ export default function TrackerStudio() {
     } finally {
       setExportingVideo(false);
     }
-  }, [videoDuration]);
+  }, [videoDuration, points, exportOptsAt]);
 
   const exportPNG = useCallback(() => {
     if (!imgRef.current || !points.length) return;
