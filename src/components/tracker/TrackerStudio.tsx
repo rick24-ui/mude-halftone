@@ -37,12 +37,6 @@ function formatTime(s: number): string {
   return `${s.toFixed(1)}s`;
 }
 
-// How quickly displayed points catch up to the latest detection result —
-// lower = smoother/more delayed, higher = snappier/more jittery. Applied
-// every animation frame so motion (including zoom-inset crops) stays fluid
-// between the throttled detection passes.
-const SMOOTH = 0.25;
-
 function lerpPoints(prev: TrackedPoint[], target: TrackedPoint[], t: number): TrackedPoint[] {
   if (!prev.length || prev.length !== target.length) return target;
   const prevMap = new Map(prev.map((p) => [p.name, p]));
@@ -51,6 +45,39 @@ function lerpPoints(prev: TrackedPoint[], target: TrackedPoint[], t: number): Tr
     if (!pp) return tp;
     return { ...tp, x: pp.x + (tp.x - pp.x) * t, y: pp.y + (tp.y - pp.y) * t };
   });
+}
+
+const TRACK_SPEED_RANGE = { min: 0.08, max: 0.9 };
+const TRACK_DENSITY_RANGE = { min: 1, max: 10 };
+
+// Maps the "densidade" slider (1–10) to how often detection re-runs during
+// playback — denser = more frequent target updates for the smoothing loop
+function detectIntervalMs(density: number): number {
+  const t = (density - TRACK_DENSITY_RANGE.min) / (TRACK_DENSITY_RANGE.max - TRACK_DENSITY_RANGE.min);
+  return Math.round(260 - t * 210); // density 1 → 260ms, density 10 → 50ms
+}
+
+// Maps the "densidade" slider to how many feature points "Ambiente" mode tracks
+function envPointCount(density: number): number {
+  const t = (density - TRACK_DENSITY_RANGE.min) / (TRACK_DENSITY_RANGE.max - TRACK_DENSITY_RANGE.min);
+  return Math.round(4 + t * 10); // density 1 → 4 points, density 10 → 14 points
+}
+
+// Picks the best video container/codec the browser's MediaRecorder supports,
+// preferring MP4/H.264 for compatibility and falling back to WebM
+function pickRecorderFormat(): { mimeType: string; ext: string } {
+  const candidates: { mimeType: string; ext: string }[] = [
+    { mimeType: "video/mp4;codecs=avc1.42E01E", ext: "mp4" },
+    { mimeType: "video/mp4;codecs=h264", ext: "mp4" },
+    { mimeType: "video/mp4", ext: "mp4" },
+    { mimeType: "video/webm;codecs=vp9", ext: "webm" },
+    { mimeType: "video/webm;codecs=vp8", ext: "webm" },
+    { mimeType: "video/webm", ext: "webm" },
+  ];
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported(c.mimeType)) return c;
+  }
+  return { mimeType: "video/webm", ext: "webm" };
 }
 
 // Draws an <img> onto a same-size offscreen canvas — used so the environment
@@ -146,6 +173,10 @@ export default function TrackerStudio() {
   const [dragging, setDragging] = useState(false);
   const [autoDetect, setAutoDetect] = useState(true);
   const [trackMode, setTrackMode] = useState<TrackMode>("person");
+  // How fast displayed points catch up to new detections (0.08–0.9) and how
+  // often/dense detection re-runs during video playback (1–10)
+  const [trackSpeed, setTrackSpeed] = useState(0.35);
+  const [trackDensity, setTrackDensity] = useState(5);
   // Bumped by the "Embaralhar" button to force a redraw with fresh random
   // box jitter / inset placement, without otherwise changing opts
   const [shuffleTick, setShuffleTick] = useState(0);
@@ -356,7 +387,7 @@ export default function TrackerStudio() {
 
     if (trackMode === "environment") {
       setStatus("detecting");
-      const pts = detectEnvironmentPoints(imageToCanvas(imgRef.current), 6);
+      const pts = detectEnvironmentPoints(imageToCanvas(imgRef.current), envPointCount(trackDensity));
       setPoints(pts);
       if (canvasRef.current) drawOverlay(canvasRef.current, imgRef.current, pts, opts);
       setStatus("done");
@@ -372,7 +403,7 @@ export default function TrackerStudio() {
     setPoints(pts);
     if (canvasRef.current) drawOverlay(canvasRef.current, imgRef.current, pts, opts);
     setStatus("done");
-  }, [opts, trackMode]);
+  }, [opts, trackMode, trackDensity]);
 
   // Auto-detect right after a new image is mounted, when enabled
   useEffect(() => {
@@ -435,7 +466,7 @@ export default function TrackerStudio() {
 
     if (trackMode === "environment") {
       setStatus("detecting");
-      setPoints(detectEnvironmentPoints(frameCanvas, 6));
+      setPoints(detectEnvironmentPoints(frameCanvas, envPointCount(trackDensity)));
       setStatus("done");
       return;
     }
@@ -447,21 +478,21 @@ export default function TrackerStudio() {
     const pts = await detectPoints(frameCanvas);
     setPoints(pts);
     setStatus(pts.length ? "done" : "no-person");
-  }, [trackMode]);
+  }, [trackMode, trackDensity]);
 
   // Lightweight detection used inside the playback loop — skips status
-  // churn so the badge doesn't flicker every ~150ms while playing
+  // churn so the badge doesn't flicker every ~throttle interval while playing
   const detectVideoFrameQuiet = useCallback(async () => {
     const frameCanvas = frameCanvasRef.current;
     if (!frameCanvas) return;
     if (trackMode === "environment") {
-      setPoints(detectEnvironmentPoints(frameCanvas, 6));
+      setPoints(detectEnvironmentPoints(frameCanvas, envPointCount(trackDensity)));
     } else {
       if (!(await loadDetector())) return;
       const pts = await detectPoints(frameCanvas);
       if (pts.length) setPoints(pts);
     }
-  }, [trackMode]);
+  }, [trackMode, trackDensity]);
 
   // Redraw whenever a new frame is grabbed via scrubbing
   useEffect(() => {
@@ -507,12 +538,12 @@ export default function TrackerStudio() {
       }
       // Interpolate toward the latest detection result every frame, so
       // points (and anything anchored to them, like zoom insets) glide
-      // smoothly instead of snapping every ~throttle interval
-      displayPointsRef.current = lerpPoints(displayPointsRef.current, framePointsRef.current, SMOOTH);
+      // smoothly at ~60fps instead of snapping every detection interval
+      displayPointsRef.current = lerpPoints(displayPointsRef.current, framePointsRef.current, trackSpeed);
       drawVideoFrame(displayPointsRef.current);
       setCurrentTime(v.currentTime);
       const now = performance.now();
-      if (now - lastDetectRef.current > 100) {
+      if (now - lastDetectRef.current > detectIntervalMs(trackDensity)) {
         lastDetectRef.current = now;
         void detectVideoFrameQuiet();
       }
@@ -523,7 +554,7 @@ export default function TrackerStudio() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [playing, videoDuration, drawVideoFrame, detectVideoFrameQuiet]);
+  }, [playing, videoDuration, drawVideoFrame, detectVideoFrameQuiet, trackSpeed, trackDensity]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
@@ -587,8 +618,9 @@ export default function TrackerStudio() {
 
   // Records a dedicated full-resolution offscreen canvas (matching the
   // source video's native size) with the live overlay while the clamped
-  // video plays through once, then downloads the result as WebM
-  const exportWebM = useCallback(async () => {
+  // video plays through once, then downloads the result as MP4 (or WebM as
+  // a fallback if the browser can't record MP4)
+  const exportVideo = useCallback(async () => {
     const video = videoRef.current;
     if (!video || !videoDuration) return;
 
@@ -615,12 +647,10 @@ export default function TrackerStudio() {
       exportCanvas.width = exportW;
       exportCanvas.height = exportH;
 
-      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-        ? "video/webm;codecs=vp9"
-        : "video/webm";
+      const { mimeType, ext } = pickRecorderFormat();
       const stream = exportCanvas.captureStream(30);
       // High bitrate scaled to resolution — keeps the export close to source quality
-      const videoBitsPerSecond = Math.min(50_000_000, Math.round(exportW * exportH * 30 * 0.08));
+      const videoBitsPerSecond = Math.min(100_000_000, Math.round(exportW * exportH * 30 * 0.25));
       const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
@@ -638,7 +668,7 @@ export default function TrackerStudio() {
           const v = videoRef.current;
           if (!v || v.currentTime >= videoDuration || v.ended) { resolve(); return; }
           exportFrameCtx.drawImage(v, 0, 0, exportW, exportH);
-          exportDisplayPoints = lerpPoints(exportDisplayPoints, framePointsRef.current, SMOOTH);
+          exportDisplayPoints = lerpPoints(exportDisplayPoints, framePointsRef.current, trackSpeed);
           drawOverlay(exportCanvas, exportFrame, exportDisplayPoints, exportOpts);
           requestAnimationFrame(tick);
         };
@@ -650,12 +680,12 @@ export default function TrackerStudio() {
       recorder.stop();
       await stopped;
 
-      const blob = new Blob(chunks, { type: "video/webm" });
-      downloadBlob(blob, timestampName("rc-tracker", "webm"));
+      const blob = new Blob(chunks, { type: mimeType });
+      downloadBlob(blob, timestampName("rc-tracker", ext));
     } finally {
       setExportingVideo(false);
     }
-  }, [videoDuration, points, exportOptsAt]);
+  }, [videoDuration, points, exportOptsAt, trackSpeed]);
 
   const exportPNG = useCallback(() => {
     if (!imgRef.current || !points.length) return;
@@ -811,6 +841,45 @@ export default function TrackerStudio() {
             <p className="text-[10px] leading-snug text-muted">
               {TRACK_MODES.find((m) => m.id === trackMode)?.hint}
             </p>
+
+            {mediaType === "video" && (
+              <>
+                <label className="block">
+                  <div className="mb-1 flex justify-between">
+                    <span className="label">Velocidade de troca</span>
+                    <span className="mono text-[11px] text-[var(--text)]">{Math.round(trackSpeed * 100)}%</span>
+                  </div>
+                  <input
+                    className="rng w-full"
+                    type="range"
+                    min={TRACK_SPEED_RANGE.min} max={TRACK_SPEED_RANGE.max} step={0.01}
+                    value={trackSpeed}
+                    onChange={(e) => setTrackSpeed(parseFloat(e.target.value))}
+                  />
+                  <p className="mt-1 text-[10px] leading-snug text-muted">
+                    Quão rápido o tracking acompanha a nova posição — baixo fica suave/fluido, alto fica mais ágil.
+                  </p>
+                </label>
+                <label className="block">
+                  <div className="mb-1 flex justify-between">
+                    <span className="label">Densidade</span>
+                    <span className="mono text-[11px] text-[var(--text)]">{trackDensity}</span>
+                  </div>
+                  <input
+                    className="rng w-full"
+                    type="range"
+                    min={TRACK_DENSITY_RANGE.min} max={TRACK_DENSITY_RANGE.max} step={1}
+                    value={trackDensity}
+                    onChange={(e) => setTrackDensity(parseInt(e.target.value))}
+                  />
+                  <p className="mt-1 text-[10px] leading-snug text-muted">
+                    {trackMode === "environment"
+                      ? "Quantos pontos de ambiente são rastreados e com que frequência a posição é atualizada."
+                      : "Com que frequência a posição é re-analisada durante a reprodução."}
+                  </p>
+                </label>
+              </>
+            )}
           </Section>
 
           {/* Editable label texts */}
@@ -1147,11 +1216,11 @@ export default function TrackerStudio() {
                 Exportar frame (PNG)
               </button>
               <button
-                onClick={exportWebM}
+                onClick={exportVideo}
                 disabled={exportingVideo}
                 className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
               >
-                {exportingVideo ? "Exportando…" : "Exportar vídeo (WebM)"}
+                {exportingVideo ? "Exportando…" : "Exportar vídeo (MP4)"}
               </button>
             </>
           )}
