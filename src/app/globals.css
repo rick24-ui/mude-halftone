@@ -115,6 +115,27 @@ input[type="range"].rng::-moz-range-thumb {
   to { background-position: 100% 100%; }
 }
 
+/* glow ambiente colorido, atrás dos painéis glass quando não há mídia */
+.ambient-glow {
+  background:
+    radial-gradient(circle at 22% 28%, rgba(232, 20, 60, 0.35), transparent 45%),
+    radial-gradient(circle at 78% 22%, rgba(0, 212, 255, 0.25), transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(212, 168, 83, 0.25), transparent 50%),
+    radial-gradient(circle at 88% 78%, rgba(170, 255, 68, 0.18), transparent 45%),
+    var(--ink);
+  background-size: 200% 200%;
+  animation: reelpan 18s ease-in-out infinite alternate;
+}
+
+/* painéis flutuantes com efeito glassmorphism */
+.glass {
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 /* scrollbar fina */
 .thin-scroll::-webkit-scrollbar {
   width: 8px;

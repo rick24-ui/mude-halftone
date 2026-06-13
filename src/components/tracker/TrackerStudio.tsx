@@ -47,6 +47,16 @@ function lerpPoints(prev: TrackedPoint[], target: TrackedPoint[], t: number): Tr
   });
 }
 
+// #rrggbb → rgba(...) — used to tint each "layer" card in the history panel
+// with the accent color that was active when that change was made
+function hexToRgba(hex: string, alpha: number): string {
+  const v = hex.replace("#", "");
+  const r = parseInt(v.slice(0, 2), 16);
+  const g = parseInt(v.slice(2, 4), 16);
+  const b = parseInt(v.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const TRACK_SPEED_RANGE = { min: 0.08, max: 0.9 };
 const TRACK_DENSITY_RANGE = { min: 1, max: 10 };
 
@@ -127,6 +137,93 @@ const DEFAULT: DrawOptions = {
   insetFilter: "none",
 };
 
+// ─── History / "layers" panel ──────────────────────────────────────────────
+
+type Snap = { opts: DrawOptions; trackMode: TrackMode; trackSpeed: number; trackDensity: number };
+
+interface HistoryEntry {
+  id: number;
+  label: string;
+  color: string;
+  time: string;
+  snapshot: Snap;
+}
+
+// Produces a short human-readable label for the single most relevant change
+// between two snapshots — used to build the history/layers list. Discrete
+// changes (clicks/toggles/selects) commit immediately; continuous ones
+// (sliders) are flagged for a debounced commit so dragging doesn't spam entries.
+function describeChange(prev: Snap, next: Snap): { label: string; debounce: boolean } | null {
+  if (prev.trackMode !== next.trackMode) {
+    return { label: `Modo: ${TRACK_MODES.find((m) => m.id === next.trackMode)?.label ?? next.trackMode}`, debounce: false };
+  }
+
+  const po = prev.opts;
+  const no = next.opts;
+
+  if (po.zoomInsets.length !== no.zoomInsets.length) {
+    return { label: no.zoomInsets.length > po.zoomInsets.length ? "Zoom inset adicionado" : "Zoom inset removido", debounce: false };
+  }
+  if (JSON.stringify(po.zoomInsets) !== JSON.stringify(no.zoomInsets)) {
+    return { label: "Zoom inset ajustado", debounce: true };
+  }
+  if (po.color !== no.color) {
+    return { label: `Cor: ${COLORS.find((c) => c.hex === no.color)?.label ?? no.color}`, debounce: false };
+  }
+  if (po.filter !== no.filter) {
+    return { label: `Filtro: ${FILTERS.find((f) => f.id === no.filter)?.label ?? no.filter}`, debounce: false };
+  }
+  if (po.insetFilter !== no.insetFilter) {
+    return { label: `Efeito no zoom: ${REGION_FILTERS.find((f) => f.id === no.insetFilter)?.label ?? no.insetFilter}`, debounce: false };
+  }
+  if (JSON.stringify(po.regionFilters) !== JSON.stringify(no.regionFilters)) {
+    const idx = po.regionFilters.findIndex((f, i) => f !== no.regionFilters[i]);
+    const customLabel = idx >= 0 ? no.regionLabels[idx]?.trim() : undefined;
+    const region = customLabel || DEFAULT_REGION_LABELS[idx] || `Região ${idx + 1}`;
+    const filterLabel = REGION_FILTERS.find((f) => f.id === no.regionFilters[idx])?.label ?? "—";
+    return { label: `${region}: ${filterLabel}`, debounce: false };
+  }
+  if (po.markerStyle !== no.markerStyle) {
+    return { label: `Pontos: ${MARKER_STYLES.find((m) => m.id === no.markerStyle)?.label ?? no.markerStyle}`, debounce: false };
+  }
+  if (po.boxStyle !== no.boxStyle) {
+    return { label: `Quadros: ${BOX_STYLES.find((b) => b.id === no.boxStyle)?.label ?? no.boxStyle}`, debounce: false };
+  }
+  if (po.labelFont !== no.labelFont) {
+    return { label: `Fonte: ${LABEL_FONTS.find((f) => f.family === no.labelFont)?.label ?? "personalizada"}`, debounce: false };
+  }
+
+  const boolFields: [keyof DrawOptions, string][] = [
+    ["showKeypoints", "Pontos"],
+    ["showSkeleton", "Esqueleto"],
+    ["showBoxes", "Boxes"],
+    ["showLabels", "Labels"],
+    ["zoomInset", "Zoom inset"],
+    ["dotGlow", "Glow nos pontos"],
+    ["connections", "Rede de conexões"],
+    ["connectionGlow", "Glow na rede"],
+    ["showCoords", "Coordenadas"],
+    ["scanlines", "Scanlines"],
+    ["grain", "Grain"],
+    ["vignette", "Vignette"],
+  ];
+  for (const [key, label] of boolFields) {
+    if (po[key] !== no[key]) {
+      return { label: `${label}: ${no[key] ? "ativado" : "desativado"}`, debounce: false };
+    }
+  }
+
+  if (po.lineWidth !== no.lineWidth) return { label: `Espessura da linha: ${no.lineWidth.toFixed(1)}px`, debounce: true };
+  if (po.dotRadius !== no.dotRadius) return { label: `Tamanho do ponto: ${no.dotRadius}px`, debounce: true };
+  if (po.boxJitter !== no.boxJitter) return { label: `Aleatoriedade: ${Math.round(no.boxJitter * 100)}%`, debounce: true };
+  if (po.connectionDensity !== no.connectionDensity) return { label: `Densidade da rede: ${Math.round(no.connectionDensity * 100)}%`, debounce: true };
+
+  if (prev.trackSpeed !== next.trackSpeed) return { label: `Velocidade de troca: ${Math.round(next.trackSpeed * 100)}%`, debounce: true };
+  if (prev.trackDensity !== next.trackDensity) return { label: `Densidade: ${next.trackDensity}`, debounce: true };
+
+  return null;
+}
+
 const DEFAULT_INSET_SIZE = 0.22;
 const MIN_INSET_SIZE = 0.08;
 const MAX_INSET_SIZE = 0.55;
@@ -154,7 +251,7 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-b border-line pb-4">
+    <div className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
       <p className="label mb-3">{title}</p>
       <div className="space-y-3">{children}</div>
     </div>
@@ -188,6 +285,10 @@ export default function TrackerStudio() {
   const [videoTruncated, setVideoTruncated] = useState(false);
   const [exportingVideo, setExportingVideo] = useState(false);
 
+  // History of meaningful option/mode changes, shown as a stack of "layers" —
+  // most recent first, click to restore that snapshot
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
   const imgRef = useRef<HTMLImageElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // Offscreen canvas holding the current video frame — fed into detection
@@ -201,6 +302,13 @@ export default function TrackerStudio() {
   // smoothed/interpolated points actually drawn each frame during playback
   const framePointsRef = useRef<TrackedPoint[]>([]);
   const displayPointsRef = useRef<TrackedPoint[]>([]);
+  // History/layers bookkeeping: last seen snapshot, pending debounce timer,
+  // a flag to avoid re-logging a change caused by restoring a past entry,
+  // and a monotonic id counter for React keys
+  const prevSnapRef = useRef<Snap | null>(null);
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restoringRef = useRef(false);
+  const historyIdRef = useRef(0);
 
   const set = <K extends keyof DrawOptions>(key: K, val: DrawOptions[K]) =>
     setOpts((o) => ({ ...o, [key]: val }));
@@ -703,17 +811,72 @@ export default function TrackerStudio() {
     );
   }, [points, opts]);
 
+  // Tracks meaningful changes to opts/trackMode/trackSpeed/trackDensity and
+  // appends a labeled entry to the history/layers panel. Discrete changes
+  // (toggles, selects) commit on the next tick; slider drags are debounced
+  // so a single drag produces one entry instead of dozens. Restoring a past
+  // entry sets restoringRef so the resulting change isn't logged again.
+  useEffect(() => {
+    const next: Snap = { opts, trackMode, trackSpeed, trackDensity };
+    const prev = prevSnapRef.current;
+    prevSnapRef.current = next;
+    if (!prev) return;
+    if (restoringRef.current) { restoringRef.current = false; return; }
+
+    const change = describeChange(prev, next);
+    if (!change) return;
+
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(() => {
+      historyIdRef.current += 1;
+      const entry: HistoryEntry = {
+        id: historyIdRef.current,
+        label: change.label,
+        color: next.opts.color,
+        time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        snapshot: next,
+      };
+      setHistory((h) => [entry, ...h].slice(0, 12));
+    }, change.debounce ? 650 : 0);
+
+    return () => {
+      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    };
+  }, [opts, trackMode, trackSpeed, trackDensity]);
+
+  // Jumps back to a past entry in the history/layers panel
+  const restoreHistory = useCallback((entry: HistoryEntry) => {
+    restoringRef.current = true;
+    setOpts(entry.snapshot.opts);
+    setTrackMode(entry.snapshot.trackMode);
+    setTrackSpeed(entry.snapshot.trackSpeed);
+    setTrackDensity(entry.snapshot.trackDensity);
+  }, []);
+
   const busy = status === "loading-model" || status === "detecting";
 
   return (
-    <main className="flex flex-1 overflow-hidden">
-      {/* ── Canvas area ─────────────────────────────────────────────────── */}
-      <div
-        className="relative flex flex-1 items-center justify-center overflow-hidden bg-ink p-6"
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-      >
+    <main
+      className="relative flex-1 overflow-hidden bg-ink"
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+    >
+      {/* ── Ambient background — blurred reflection behind the glass panels ─ */}
+      <div className="absolute inset-0 overflow-hidden">
+        {imgSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imgSrc} alt="" className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
+        ) : videoSrc ? (
+          <video src={videoSrc} muted loop autoPlay playsInline className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
+        ) : (
+          <div className="ambient-glow h-full w-full" />
+        )}
+        <div className="absolute inset-0 bg-ink/55" />
+      </div>
+
+      {/* ── Centered media stage ─────────────────────────────────────────── */}
+      <div className="absolute inset-0 flex items-center justify-center pl-[332px] pr-[312px] pt-24 pb-24">
         {!imgSrc && !videoSrc ? (
           <div
             className={`flex flex-col items-center gap-5 rounded-xl border-2 border-dashed p-20 text-center transition-colors ${
@@ -734,10 +897,9 @@ export default function TrackerStudio() {
             >
               Selecionar arquivo
             </button>
-            <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
           </div>
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3">
+          <>
             {mediaType === "video" && (
               <video
                 ref={videoRef}
@@ -755,61 +917,66 @@ export default function TrackerStudio() {
               onMouseUp={handlePointerUp}
               onMouseLeave={handlePointerUp}
               title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
-              className={`max-h-full max-w-full rounded-lg shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
-              style={mediaType === "video" ? { maxHeight: "calc(100% - 52px)" } : undefined}
+              className={`max-h-full max-w-full rounded-2xl shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
             />
-
-            {/* Timeline / playback controls */}
-            {mediaType === "video" && videoDuration > 0 && (
-              <div className="flex w-full max-w-[900px] items-center gap-3 rounded-lg border border-line bg-[var(--panel)] px-3 py-2">
-                <button
-                  onClick={togglePlay}
-                  className="shrink-0 rounded bg-red px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-90"
-                >
-                  {playing ? "Pausar" : "Tocar"}
-                </button>
-                <input
-                  className="rng flex-1"
-                  type="range" min={0} max={videoDuration} step={0.01}
-                  value={Math.min(currentTime, videoDuration)}
-                  onChange={(e) => handleSeek(parseFloat(e.target.value))}
-                />
-                <span className="mono shrink-0 text-[11px] text-muted">
-                  {formatTime(currentTime)} / {formatTime(videoDuration)}
-                </span>
-              </div>
-            )}
-            {mediaType === "video" && videoTruncated && (
-              <p className="text-[10px] text-muted">
-                Vídeo maior que {MAX_VIDEO_DURATION}s — usando apenas os primeiros {MAX_VIDEO_DURATION}s
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Drag overlay */}
-        {(imgSrc || videoSrc) && dragging && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-red bg-red/10">
-            <p className="text-sm font-semibold text-red">Soltar para trocar mídia</p>
-          </div>
-        )}
-
-        {/* Status badge */}
-        {busy && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full border border-line bg-[var(--panel)] px-4 py-2 text-[11px] text-muted">
-            {status === "loading-model" ? "Carregando modelo IA…" : "Detectando pontos…"}
-          </div>
-        )}
-
-        {exportingVideo && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full border border-line bg-[var(--panel)] px-4 py-2 text-[11px] text-muted">
-            Exportando vídeo…
-          </div>
+          </>
         )}
       </div>
 
-      {/* ── Controls panel ──────────────────────────────────────────────── */}
-      <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-[var(--panel)]">
+      {/* Drag overlay */}
+      {(imgSrc || videoSrc) && dragging && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-2 border-dashed border-red bg-red/10">
+          <p className="rounded-full bg-[var(--ink)]/80 px-4 py-2 text-sm font-semibold text-red">Soltar para trocar mídia</p>
+        </div>
+      )}
+
+      {/* Status badge */}
+      {(busy || exportingVideo) && (
+        <div className="glass absolute left-1/2 top-24 z-30 -translate-x-1/2 rounded-full px-4 py-2 text-[11px] text-[var(--text)]">
+          {exportingVideo
+            ? "Exportando vídeo…"
+            : status === "loading-model"
+            ? "Carregando modelo IA…"
+            : "Detectando pontos…"}
+        </div>
+      )}
+
+      {/* ── Top bar — brand + track mode ─────────────────────────────────── */}
+      <div className="glass absolute left-[332px] right-[202px] top-4 z-20 flex h-14 items-center gap-4 rounded-full px-5">
+        <span className="mono shrink-0 text-[11px] font-bold tracking-tight text-[var(--text)]">RC · TRACKER</span>
+        <div className="h-5 w-px shrink-0 bg-white/10" />
+        <div className="flex flex-1 items-center justify-center gap-1.5">
+          {TRACK_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setTrackMode(m.id)}
+              title={m.hint}
+              className={`rounded-full px-4 py-1.5 text-[11px] font-medium transition-colors ${
+                trackMode === m.id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <span className="label shrink-0">
+          {!imgSrc && !videoSrc ? "Sem mídia" : mediaType === "video" ? "Vídeo" : "Imagem"}
+        </span>
+      </div>
+
+      {/* ── Top-right pill — media actions ───────────────────────────────── */}
+      <div className="glass absolute right-4 top-4 z-20 flex h-14 w-[170px] items-center justify-center rounded-full">
+        <button
+          onClick={() => inputRef.current?.click()}
+          className="flex h-full w-full items-center justify-center gap-2 rounded-full px-4 text-[11px] font-medium text-[var(--text)] transition-colors hover:bg-white/10"
+        >
+          {(imgSrc || videoSrc) ? "Trocar mídia" : "Carregar mídia"}
+        </button>
+      </div>
+      <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
+
+      {/* ── Left panel — controls ─────────────────────────────────────────── */}
+      <aside className="glass absolute bottom-4 left-4 top-4 z-20 flex w-[300px] flex-col overflow-hidden rounded-2xl">
         <div className="thin-scroll flex-1 overflow-y-auto p-4 space-y-4">
 
           {/* Detection behavior */}
@@ -821,23 +988,8 @@ export default function TrackerStudio() {
             />
           </Section>
 
-          {/* What the tracker should lock onto */}
+          {/* What the tracker should lock onto — mode itself switches in the top bar */}
           <Section title="Modo de captura">
-            <div className="grid grid-cols-2 gap-1.5">
-              {TRACK_MODES.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setTrackMode(m.id)}
-                  className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
-                    trackMode === m.id
-                      ? "border-red bg-red/10 text-[var(--text)]"
-                      : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
             <p className="text-[10px] leading-snug text-muted">
               {TRACK_MODES.find((m) => m.id === trackMode)?.hint}
             </p>
@@ -1162,20 +1314,10 @@ export default function TrackerStudio() {
             <Toggle label="Vignette" value={opts.vignette} onChange={(v) => set("vignette", v)} />
           </Section>
 
-          {/* New media button */}
-          {(imgSrc || videoSrc) && (
-            <button
-              onClick={() => { inputRef.current?.click(); }}
-              className="w-full rounded border border-line py-2 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
-            >
-              Trocar mídia
-            </button>
-          )}
-          <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
         </div>
 
         {/* Footer */}
-        <div className="border-t border-line px-4 py-4 space-y-2">
+        <div className="border-t border-white/10 px-4 py-4 space-y-2">
           {status === "no-person" && (
             <p className="text-center text-[11px] text-red">
               {trackMode === "person" ? "Nenhuma pessoa detectada" : "Nenhum ponto detectado"}
@@ -1226,6 +1368,87 @@ export default function TrackerStudio() {
           )}
         </div>
       </aside>
+
+      {/* Bottom player bar — video playback */}
+      {mediaType === "video" && videoDuration > 0 && (
+        <div className="glass absolute bottom-4 left-[332px] right-[312px] z-20 flex h-14 items-center gap-3 rounded-full px-4">
+          <button
+            onClick={togglePlay}
+            aria-label={playing ? "Pausar" : "Tocar"}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red text-white hover:opacity-90"
+          >
+            {playing ? (
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+                <rect x="1" y="0" width="3.5" height="12" />
+                <rect x="7.5" y="0" width="3.5" height="12" />
+              </svg>
+            ) : (
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M1 0 11 6 1 12Z" />
+              </svg>
+            )}
+          </button>
+          <input
+            className="rng flex-1"
+            type="range" min={0} max={videoDuration} step={0.01}
+            value={Math.min(currentTime, videoDuration)}
+            onChange={(e) => handleSeek(parseFloat(e.target.value))}
+          />
+          {videoTruncated && (
+            <span className="mono shrink-0 rounded-full bg-red/20 px-2 py-0.5 text-[10px] text-red">
+              MAX {MAX_VIDEO_DURATION}s
+            </span>
+          )}
+          <span className="mono shrink-0 text-[11px] text-muted">
+            {formatTime(currentTime)} / {formatTime(videoDuration)}
+          </span>
+        </div>
+      )}
+
+      {/* History / layers panel */}
+      <div className="glass absolute bottom-4 right-4 z-20 flex max-h-[50vh] w-[280px] flex-col overflow-hidden rounded-2xl">
+        <div className="flex items-center justify-between px-4 pb-2 pt-3">
+          <p className="label">Histórico</p>
+          {history.length > 0 && (
+            <button
+              onClick={() => setHistory([])}
+              className="text-[10px] text-muted hover:text-[var(--text)]"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+        <div className="thin-scroll flex-1 overflow-y-auto px-3 pb-3">
+          {history.length === 0 ? (
+            <p className="px-1 py-2 text-[11px] leading-relaxed text-muted">
+              As alterações de estilo aparecem aqui como camadas. Clique numa camada para voltar a esse ponto.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {history.map((h, i) => (
+                <button
+                  key={h.id}
+                  onClick={() => restoreHistory(h)}
+                  style={{
+                    background: `linear-gradient(135deg, ${hexToRgba(h.color, 0.16)}, rgba(255,255,255,0.02))`,
+                    opacity: Math.max(0.5, 1 - i * 0.05),
+                  }}
+                  className="block w-full rounded-lg border border-white/10 px-3 py-2 text-left transition-opacity hover:border-white/20 hover:opacity-100"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: h.color, boxShadow: `0 0 8px ${h.color}` }}
+                    />
+                    <span className="flex-1 truncate text-[11px] text-[var(--text)]">{h.label}</span>
+                  </div>
+                  <p className="mono mt-1 text-[10px] text-muted">{h.time}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </main>
   );
 }
