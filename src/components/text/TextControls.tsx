@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import Slider from "@/components/Slider";
 import { renderTextToSource, TextAlign } from "@/lib/textRender";
+import { Section } from "@/components/dock/controls";
 
 interface FontDef {
   id: string;
@@ -58,21 +59,19 @@ export default function TextControls() {
   }, [text, font, weight, fontSize, letterSpacing, lineHeight, align, uppercase, setSource]);
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <h3 className="label mb-2 text-[var(--text)]">Texto</h3>
+    <>
+      <Section title="Texto">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={2}
           placeholder="Digite aqui…"
-          className="w-full resize-none rounded bg-[var(--panel-2)] px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-red"
+          className="w-full resize-none rounded-lg bg-[var(--panel-2)] px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-red"
         />
-        <p className="label mt-1">Enter = nova linha</p>
-      </div>
+        <p className="label">Enter = nova linha</p>
+      </Section>
 
-      <div>
-        <h3 className="label mb-2 text-[var(--text)]">Fonte</h3>
+      <Section title="Fonte">
         <div className="grid grid-cols-2 gap-1.5">
           {FONTS.map((f) => (
             <button
@@ -82,7 +81,7 @@ export default function TextControls() {
                 if (!f.weights.includes(weight)) setWeight(f.def);
               }}
               style={{ fontFamily: f.family }}
-              className={`truncate rounded border px-2 py-2 text-[15px] leading-none transition-colors ${
+              className={`truncate rounded-lg border px-2 py-2 text-[15px] leading-none transition-colors ${
                 fontId === f.id ? "border-red bg-red/10 text-[var(--text)]" : "border-line text-muted hover:text-[var(--text)]"
               }`}
             >
@@ -90,17 +89,16 @@ export default function TextControls() {
             </button>
           ))}
         </div>
-      </div>
+      </Section>
 
       {font.weights.length > 1 && (
-        <div>
-          <span className="label">Peso</span>
-          <div className="mt-1 flex flex-wrap gap-1 rounded-md bg-[var(--panel-2)] p-1">
+        <Section title="Peso">
+          <div className="flex flex-wrap gap-1 rounded-full bg-[var(--panel-2)] p-1">
             {font.weights.map((w) => (
               <button
                 key={w}
                 onClick={() => setWeight(w)}
-                className={`flex-1 rounded px-2 py-1.5 text-[11px] transition-colors ${
+                className={`flex-1 rounded-full px-2 py-1.5 text-[11px] transition-colors ${
                   weight === w ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
                 }`}
               >
@@ -108,36 +106,40 @@ export default function TextControls() {
               </button>
             ))}
           </div>
-        </div>
+        </Section>
       )}
 
-      <Slider label="Tamanho" value={fontSize} min={60} max={600} step={2} unit="px" onChange={setFontSize} />
-      <Slider label="Espaçamento" value={letterSpacing} min={-20} max={60} step={1} unit="px" onChange={setLetterSpacing} />
-      <Slider label="Entrelinha" value={lineHeight} min={0.7} max={2} step={0.01} onChange={setLineHeight} />
+      <Section title="Tamanho & Espaçamento">
+        <Slider label="Tamanho" value={fontSize} min={60} max={600} step={2} unit="px" onChange={setFontSize} />
+        <Slider label="Espaçamento" value={letterSpacing} min={-20} max={60} step={1} unit="px" onChange={setLetterSpacing} />
+        <Slider label="Entrelinha" value={lineHeight} min={0.7} max={2} step={0.01} onChange={setLineHeight} />
+      </Section>
 
-      <div className="flex items-center gap-2">
-        <div className="flex flex-1 gap-1 rounded-md bg-[var(--panel-2)] p-1">
-          {(["left", "center", "right"] as TextAlign[]).map((a) => (
-            <button
-              key={a}
-              onClick={() => setAlign(a)}
-              className={`flex-1 rounded px-2 py-1.5 text-[11px] transition-colors ${
-                align === a ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
-              }`}
-            >
-              {a === "left" ? "Esq." : a === "center" ? "Centro" : "Dir."}
-            </button>
-          ))}
+      <Section title="Alinhamento">
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 gap-1 rounded-full bg-[var(--panel-2)] p-1">
+            {(["left", "center", "right"] as TextAlign[]).map((a) => (
+              <button
+                key={a}
+                onClick={() => setAlign(a)}
+                className={`flex-1 rounded-full px-2 py-1.5 text-[11px] transition-colors ${
+                  align === a ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+                }`}
+              >
+                {a === "left" ? "Esq." : a === "center" ? "Centro" : "Dir."}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setUppercase((u) => !u)}
+            className={`rounded-full border px-3 py-2 text-[11px] transition-colors ${
+              uppercase ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"
+            }`}
+          >
+            MAIÚS
+          </button>
         </div>
-        <button
-          onClick={() => setUppercase((u) => !u)}
-          className={`rounded border px-3 py-2 text-[11px] transition-colors ${
-            uppercase ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"
-          }`}
-        >
-          MAIÚS
-        </button>
-      </div>
-    </div>
+      </Section>
+    </>
   );
 }

@@ -22,6 +22,8 @@ import {
   BOX_STYLES,
 } from "@/lib/tracker";
 import { downloadBlob, timestampName } from "@/lib/export";
+import { Section, Toggle } from "@/components/dock/controls";
+import EffectsDock from "@/components/EffectsDock";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -229,34 +231,7 @@ const MIN_INSET_SIZE = 0.08;
 const MAX_INSET_SIZE = 0.55;
 
 const inputCls =
-  "w-full rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red";
-
-// ─── Sub-components ───────────────────────────────────────────────────────
-
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="label">{label}</span>
-      <button
-        onClick={() => onChange(!value)}
-        className={`relative h-5 w-9 rounded-full transition-colors ${value ? "bg-red" : "bg-[var(--line)]"}`}
-      >
-        <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${value ? "left-4" : "left-0.5"}`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
-      <p className="label mb-3">{title}</p>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
+  "w-full rounded-lg bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red";
 
 // ─── Main Component ───────────────────────────────────────────────────────
 
@@ -876,7 +851,7 @@ export default function TrackerStudio() {
       </div>
 
       {/* ── Centered media stage ─────────────────────────────────────────── */}
-      <div className="absolute inset-0 flex items-center justify-center pl-[332px] pr-[312px] pt-24 pb-24">
+      <div className="absolute inset-0 flex items-center justify-center px-8 pr-[312px] pt-12 pb-28">
         {!imgSrc && !videoSrc ? (
           <div
             className={`flex flex-col items-center gap-5 rounded-xl border-2 border-dashed p-20 text-center transition-colors ${
@@ -893,7 +868,7 @@ export default function TrackerStudio() {
             </div>
             <button
               onClick={() => inputRef.current?.click()}
-              className="rounded bg-red px-5 py-2 text-xs font-semibold text-white hover:opacity-90"
+              className="rounded-lg bg-red px-5 py-2 text-xs font-semibold text-white hover:opacity-90"
             >
               Selecionar arquivo
             </button>
@@ -941,29 +916,6 @@ export default function TrackerStudio() {
         </div>
       )}
 
-      {/* ── Top bar — brand + track mode ─────────────────────────────────── */}
-      <div className="glass absolute left-[332px] right-[202px] top-4 z-20 flex h-14 items-center gap-4 rounded-full px-5">
-        <span className="mono shrink-0 text-[11px] font-bold tracking-tight text-[var(--text)]">RC · TRACKER</span>
-        <div className="h-5 w-px shrink-0 bg-white/10" />
-        <div className="flex flex-1 items-center justify-center gap-1.5">
-          {TRACK_MODES.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setTrackMode(m.id)}
-              title={m.hint}
-              className={`rounded-full px-4 py-1.5 text-[11px] font-medium transition-colors ${
-                trackMode === m.id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <span className="label shrink-0">
-          {!imgSrc && !videoSrc ? "Sem mídia" : mediaType === "video" ? "Vídeo" : "Imagem"}
-        </span>
-      </div>
-
       {/* ── Top-right pill — media actions ───────────────────────────────── */}
       <div className="glass absolute right-4 top-4 z-20 flex h-14 w-[170px] items-center justify-center rounded-full">
         <button
@@ -975,8 +927,9 @@ export default function TrackerStudio() {
       </div>
       <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
 
-      {/* ── Left panel — controls ─────────────────────────────────────────── */}
-      <aside className="glass absolute bottom-4 left-4 top-4 z-20 flex w-[300px] flex-col overflow-hidden rounded-2xl">
+      {/* ── Floating dock — controls ──────────────────────────────────────── */}
+      <EffectsDock title="Tracking & Efeitos" raised={mediaType === "video" && videoDuration > 0}>
+        <div className="flex h-full flex-col">
         <div className="thin-scroll flex-1 overflow-y-auto p-4 space-y-4">
 
           {/* Detection behavior */}
@@ -988,8 +941,22 @@ export default function TrackerStudio() {
             />
           </Section>
 
-          {/* What the tracker should lock onto — mode itself switches in the top bar */}
+          {/* What the tracker should lock onto */}
           <Section title="Modo de captura">
+            <div className="flex gap-1.5">
+              {TRACK_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setTrackMode(m.id)}
+                  title={m.hint}
+                  className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-medium transition-colors ${
+                    trackMode === m.id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
             <p className="text-[10px] leading-snug text-muted">
               {TRACK_MODES.find((m) => m.id === trackMode)?.hint}
             </p>
@@ -1072,7 +1039,7 @@ export default function TrackerStudio() {
                   key={f.id}
                   onClick={() => set("labelFont", f.family)}
                   style={{ fontFamily: f.family }}
-                  className={`truncate rounded border px-2 py-2 text-[12px] leading-none transition-colors ${
+                  className={`truncate rounded-lg border px-2 py-2 text-[12px] leading-none transition-colors ${
                     opts.labelFont === f.family
                       ? "border-red bg-red/10 text-[var(--text)]"
                       : "border-line text-muted hover:text-[var(--text)]"
@@ -1118,7 +1085,7 @@ export default function TrackerStudio() {
               onChange={(v) => set("zoomInset", v)}
             />
             {opts.zoomInset && (
-              <div className="flex items-center justify-between gap-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5">
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-[var(--panel-2)] px-2.5 py-1.5">
                 <span className="text-[10px] leading-snug text-muted">
                   {opts.zoomInsets.length
                     ? `${opts.zoomInsets.length} zoom${opts.zoomInsets.length > 1 ? "s" : ""} — arraste para mover, puxe o canto para redimensionar`
@@ -1127,7 +1094,7 @@ export default function TrackerStudio() {
                 {opts.zoomInsets.length > 0 && (
                   <button
                     onClick={() => set("zoomInsets", [])}
-                    className="shrink-0 rounded border border-line px-2 py-1 text-[10px] text-muted hover:border-muted hover:text-[var(--text)]"
+                    className="shrink-0 rounded-lg border border-line px-2 py-1 text-[10px] text-muted hover:border-muted hover:text-[var(--text)]"
                   >
                     Limpar
                   </button>
@@ -1145,7 +1112,7 @@ export default function TrackerStudio() {
                   <button
                     key={m.id}
                     onClick={() => set("markerStyle", m.id)}
-                    className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                    className={`rounded-lg border px-2 py-1.5 text-[11px] transition-colors ${
                       opts.markerStyle === m.id
                         ? "border-red bg-red/10 text-[var(--text)]"
                         : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
@@ -1164,7 +1131,7 @@ export default function TrackerStudio() {
                   <button
                     key={b.id}
                     onClick={() => set("boxStyle", b.id)}
-                    className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                    className={`rounded-lg border px-2 py-1.5 text-[11px] transition-colors ${
                       opts.boxStyle === b.id
                         ? "border-red bg-red/10 text-[var(--text)]"
                         : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
@@ -1225,7 +1192,7 @@ export default function TrackerStudio() {
             <button
               onClick={() => setShuffleTick((t) => t + 1)}
               disabled={!points.length}
-              className="w-full rounded border border-line py-2 text-[11px] text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+              className="w-full rounded-lg border border-line py-2 text-[11px] text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
             >
               Embaralhar
             </button>
@@ -1261,7 +1228,7 @@ export default function TrackerStudio() {
                 <button
                   key={f.id}
                   onClick={() => set("filter", f.id)}
-                  className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] transition-colors ${
                     opts.filter === f.id
                       ? "border-red bg-red/10 text-[var(--text)]"
                       : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
@@ -1330,7 +1297,7 @@ export default function TrackerStudio() {
           <button
             onClick={runDetect}
             disabled={(!imgSrc && !videoSrc) || busy}
-            className="w-full rounded bg-red py-2.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+            className="w-full rounded-lg bg-red py-2.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
           >
             {status === "loading-model"
               ? "Carregando modelo IA…"
@@ -1342,7 +1309,7 @@ export default function TrackerStudio() {
           {status === "done" && mediaType === "image" && (
             <button
               onClick={exportPNG}
-              className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)]"
+              className="w-full rounded-lg border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)]"
             >
               Exportar PNG
             </button>
@@ -1353,25 +1320,26 @@ export default function TrackerStudio() {
               <button
                 onClick={exportVideoFramePNG}
                 disabled={!points.length}
-                className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+                className="w-full rounded-lg border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
               >
                 Exportar frame (PNG)
               </button>
               <button
                 onClick={exportVideo}
                 disabled={exportingVideo}
-                className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+                className="w-full rounded-lg border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
               >
                 {exportingVideo ? "Exportando…" : "Exportar vídeo (MP4)"}
               </button>
             </>
           )}
         </div>
-      </aside>
+        </div>
+      </EffectsDock>
 
       {/* Bottom player bar — video playback */}
       {mediaType === "video" && videoDuration > 0 && (
-        <div className="glass absolute bottom-4 left-[332px] right-[312px] z-20 flex h-14 items-center gap-3 rounded-full px-4">
+        <div className="glass absolute bottom-4 left-8 right-[312px] z-20 flex h-14 items-center gap-3 rounded-full px-4">
           <button
             onClick={togglePlay}
             aria-label={playing ? "Pausar" : "Tocar"}

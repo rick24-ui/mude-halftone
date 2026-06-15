@@ -5,6 +5,7 @@ import { useStore } from "@/store/useStore";
 import UploadDropzone from "@/components/UploadDropzone";
 import PreviewCanvas from "@/components/PreviewCanvas";
 import ControlsPanel from "@/components/ControlsPanel";
+import EffectsDock from "@/components/EffectsDock";
 import BatchModal from "@/components/BatchModal";
 import BordersStudio from "@/components/borders/BordersStudio";
 import TextStudio from "@/components/text/TextStudio";
@@ -14,6 +15,7 @@ type Tab = "ponto" | "texto" | "borders" | "tracker";
 
 export default function Home() {
   const source = useStore((s) => s.source);
+  const image = useStore((s) => s.image);
   const fileName = useStore((s) => s.fileName);
   const showOriginal = useStore((s) => s.showOriginal);
   const setShowOriginal = useStore((s) => s.setShowOriginal);
@@ -29,7 +31,7 @@ export default function Home() {
   const tabBtn = (id: Tab, label: string) => (
     <button
       onClick={() => setTab(id)}
-      className={`rounded px-3 py-1 text-[12px] transition-colors ${
+      className={`rounded-full px-3 py-1 text-[12px] transition-colors ${
         tab === id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
       }`}
     >
@@ -46,7 +48,7 @@ export default function Home() {
             <span className="h-3 w-3 rounded-full bg-red" />
             <span className="mono text-sm font-bold tracking-tight">RC — POINTILISM GENERATOR</span>
           </div>
-          <div className="flex items-center gap-1 rounded-md bg-[var(--panel-2)] p-1">
+          <div className="flex items-center gap-1 rounded-full bg-[var(--panel-2)] p-1">
             {tabBtn("ponto", "Pontilhismo")}
             {tabBtn("texto", "Texto")}
             {tabBtn("borders", "Borders")}
@@ -61,7 +63,7 @@ export default function Home() {
             )}
             <button
               onClick={() => setBatchOpen(true)}
-              className="rounded border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
+              className="rounded-full border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
             >
               Lote
             </button>
@@ -69,7 +71,7 @@ export default function Home() {
               <>
                 <button
                   onClick={() => setShowOriginal(!showOriginal)}
-                  className={`rounded border px-3 py-1 text-[11px] transition-colors ${
+                  className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${
                     showOriginal ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"
                   }`}
                 >
@@ -77,7 +79,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={clearImage}
-                  className="rounded border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
+                  className="rounded-full border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
                 >
                   Nova imagem
                 </button>
@@ -106,13 +108,26 @@ export default function Home() {
           <UploadDropzone />
         </main>
       ) : (
-        <main className="flex flex-1 overflow-hidden">
-          <div className="flex flex-1 items-center justify-center overflow-hidden bg-ink p-6">
+        <main className="relative flex-1 overflow-hidden bg-ink">
+          {/* ── Ambient background — blurred reflection behind the glass dock ─ */}
+          <div className="absolute inset-0 overflow-hidden">
+            {image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={image.src} alt="" className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
+            ) : (
+              <div className="ambient-glow h-full w-full" />
+            )}
+            <div className="absolute inset-0 bg-ink/55" />
+          </div>
+
+          {/* ── Centered canvas stage ─────────────────────────────────────── */}
+          <div className="absolute inset-0 flex items-center justify-center px-8 pt-12 pb-28">
             <PreviewCanvas />
           </div>
-          <aside className="flex w-[320px] shrink-0 flex-col border-l border-line bg-[var(--panel)]">
+
+          <EffectsDock title="Efeitos">
             <ControlsPanel />
-          </aside>
+          </EffectsDock>
         </main>
       )}
     </div>
