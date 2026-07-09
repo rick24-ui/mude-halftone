@@ -81,7 +81,7 @@ export default function PreviewCanvas() {
     <div className="relative flex h-full w-full items-center justify-center">
       <div
         ref={wrapRef}
-        className="checker relative inline-block max-h-full max-w-full overflow-hidden rounded-2xl shadow-2xl"
+        className="checker relative inline-block max-h-full max-w-full overflow-hidden rounded-md shadow-2xl"
       >
         <canvas
           ref={canvasRef}
@@ -113,12 +113,12 @@ export default function PreviewCanvas() {
                 <path d="M8 7l-4 5 4 5M16 7l4 5-4 5" />
               </svg>
             </button>
-            <span className="label absolute left-2 top-2 rounded-lg bg-black/50 px-1.5 py-0.5">Original</span>
+            <span className="label absolute left-2 top-2 rounded bg-black/50 px-1.5 py-0.5">Original</span>
           </>
         )}
       </div>
 
-      <span className="label absolute bottom-2 right-3 rounded-lg bg-black/40 px-2 py-1 backdrop-blur">
+      <span className="label absolute bottom-2 right-3 rounded bg-black/40 px-2 py-1 backdrop-blur">
         {dots.length.toLocaleString("pt-BR")} pontos{animated ? " · animado" : ""}
       </span>
     </div>
