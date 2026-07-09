@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #0d0d0d;
-  --panel: #141414;
-  --panel-2: #1b1b1b;
-  --line: #2a2a2a;
-  --red: #e8143c;
-  --muted: #8a8a8a;
-  --text: #ededed;
+  --ink: #111111;
+  --panel: #1a1a1a;
+  --panel-2: #212121;
+  --line: #2e2e2e;
+  --red: #d00000;
+  --muted: #888888;
+  --text: #f0f0f0;
 }
 
 @theme inline {
@@ -106,7 +106,7 @@ input[type="range"].rng::-moz-range-thumb {
 
 /* placeholder animado do reel (atrás da moldura) */
 .reel-bg {
-  background: linear-gradient(135deg, #232323 0%, #141414 40%, #2a1a1d 70%, #1a1a1a 100%);
+  background: linear-gradient(135deg, #1e1e1e 0%, #161616 40%, #280a0a 70%, #1a1a1a 100%);
   background-size: 200% 200%;
   animation: reelpan 8s ease-in-out infinite alternate;
 }
@@ -118,10 +118,10 @@ input[type="range"].rng::-moz-range-thumb {
 /* glow ambiente colorido, atrás dos painéis glass quando não há mídia */
 .ambient-glow {
   background:
-    radial-gradient(circle at 22% 28%, rgba(232, 20, 60, 0.35), transparent 45%),
-    radial-gradient(circle at 78% 22%, rgba(0, 212, 255, 0.25), transparent 45%),
-    radial-gradient(circle at 50% 85%, rgba(212, 168, 83, 0.25), transparent 50%),
-    radial-gradient(circle at 88% 78%, rgba(170, 255, 68, 0.18), transparent 45%),
+    radial-gradient(circle at 22% 28%, rgba(208, 0, 0, 0.30), transparent 45%),
+    radial-gradient(circle at 78% 22%, rgba(0, 180, 255, 0.18), transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(190, 140, 60, 0.18), transparent 50%),
+    radial-gradient(circle at 88% 78%, rgba(140, 210, 50, 0.12), transparent 45%),
     var(--ink);
   background-size: 200% 200%;
   animation: reelpan 18s ease-in-out infinite alternate;
@@ -129,11 +129,27 @@ input[type="range"].rng::-moz-range-thumb {
 
 /* painéis flutuantes com efeito glassmorphism */
 .glass {
-  background: rgba(255, 255, 255, 0.045);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: rgba(14, 14, 14, 0.72);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* sidebar fixa com efeito glass */
+.glass-sidebar {
+  background: rgba(20, 20, 20, 0.82);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-left: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+/* header fixo com efeito glass */
+.glass-header {
+  background: rgba(16, 16, 16, 0.88);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
 }
 
 /* scrollbar fina */

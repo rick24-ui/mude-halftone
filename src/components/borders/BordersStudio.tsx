@@ -68,7 +68,7 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-t border-line px-4 py-4">
+    <section className="border-t border-white/5 px-4 py-4">
       <h3 className="label mb-3 text-[var(--text)]">{title}</h3>
       <div className="space-y-3">{children}</div>
     </section>
@@ -143,7 +143,7 @@ export default function BordersStudio() {
       </div>
 
       {/* Painel */}
-      <aside className="flex w-[330px] shrink-0 flex-col border-l border-line bg-[var(--panel)]">
+      <aside className="glass-sidebar flex w-[330px] shrink-0 flex-col">
         <div className="px-4 py-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="label text-[var(--text)]">Modelos de Borda</h3>
@@ -215,7 +215,7 @@ export default function BordersStudio() {
           </Section>
         </div>
 
-        <div className="border-t border-line bg-[var(--panel)] px-4 py-4">
+        <div className="border-t border-white/5 bg-[var(--panel)] px-4 py-4">
           <p className="label mb-2">{p.width}×{p.height} · centro transparente</p>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={exportPNG} className="rounded bg-[var(--panel-2)] py-2.5 text-xs font-medium hover:bg-[var(--line)]">

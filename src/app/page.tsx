@@ -40,7 +40,7 @@ export default function Home() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
+      <header className="glass-header flex h-12 shrink-0 items-center justify-between px-4">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <span className="h-3 w-3 rounded-full bg-red" />
@@ -110,7 +110,7 @@ export default function Home() {
           <div className="flex flex-1 items-center justify-center overflow-hidden bg-ink p-6">
             <PreviewCanvas />
           </div>
-          <aside className="flex w-[320px] shrink-0 flex-col border-l border-line bg-[var(--panel)]">
+          <aside className="glass-sidebar flex w-[320px] shrink-0 flex-col">
             <ControlsPanel />
           </aside>
         </main>

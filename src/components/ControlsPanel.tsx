@@ -11,7 +11,7 @@ import { exportPNG, exportSVG, exportPDF, copyPNGToClipboard, exportGIF, exportV
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-t border-line px-4 py-4">
+    <section className="border-t border-white/5 px-4 py-4">
       <h3 className="label mb-3 text-[var(--text)]">{title}</h3>
       <div className="space-y-3">{children}</div>
     </section>
@@ -365,7 +365,7 @@ export default function ControlsPanel() {
       </div>
 
       {/* Export */}
-      <div className="border-t border-line bg-[var(--panel)] px-4 py-4">
+      <div className="border-t border-white/5 bg-[var(--panel)] px-4 py-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="label text-[var(--text)]">Exportar</h3>
           <div className="flex gap-1">
