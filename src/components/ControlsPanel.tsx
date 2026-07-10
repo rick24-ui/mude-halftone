@@ -129,7 +129,7 @@ export default function ControlsPanel() {
       {/* Presets */}
       <div className="px-4 py-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="label text-[var(--text)]">Presets MUDE</h3>
+          <h3 className="label text-[var(--text)]">Presets</h3>
           <button onClick={reset} className="label hover:text-red">
             Reset
           </button>

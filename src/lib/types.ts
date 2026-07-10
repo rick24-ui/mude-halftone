@@ -1,4 +1,4 @@
-// Tipos centrais do motor de pontilhismo MUDE.
+// Tipos centrais do motor de pontilhismo.
 
 export type DotShape = "circle" | "square" | "diamond" | "triangle" | "hexagon" | "ring" | "cross";
 
@@ -123,7 +123,7 @@ export const DEFAULT_PARAMS: PointillismParams = {
 export const PRESETS: Preset[] = [
   {
     id: "classico",
-    name: "MUDE Clássico",
+    name: "Clássico",
     params: {
       grid: "square", spacing: 14, jitter: 0, shape: "circle",
       minSize: 0, maxSize: 7, sizeScale: 1, flow: 0,
@@ -133,7 +133,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "esportivo",
-    name: "MUDE Esportivo",
+    name: "Esportivo",
     params: {
       grid: "hex", hexOffset: true, spacing: 9, jitter: 0.05, shape: "circle",
       minSize: 0, maxSize: 5, sizeScale: 1.05, flow: 0,
@@ -143,7 +143,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "editorial",
-    name: "MUDE Editorial",
+    name: "Editorial",
     params: {
       grid: "square", spacing: 20, jitter: 0.12, shape: "circle",
       minSize: 0.4, maxSize: 11, sizeScale: 1, flow: 4, flowScale: 5,

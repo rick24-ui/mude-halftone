@@ -26,7 +26,7 @@ const WEIGHT_LABEL: Record<number, string> = { 400: "Regular", 600: "SemiBold", 
 
 export default function TextControls() {
   const setSource = useStore((s) => s.setSource);
-  const [text, setText] = useState("YOGA\nDAY");
+  const [text, setText] = useState("SAMPLE\nTEXT");
   const [fontId, setFontId] = useState("barlow");
   const [weight, setWeight] = useState(900);
   const [fontSize, setFontSize] = useState(260);

@@ -6,11 +6,10 @@ import UploadDropzone from "@/components/UploadDropzone";
 import PreviewCanvas from "@/components/PreviewCanvas";
 import ControlsPanel from "@/components/ControlsPanel";
 import BatchModal from "@/components/BatchModal";
-import BordersStudio from "@/components/borders/BordersStudio";
 import TextStudio from "@/components/text/TextStudio";
 import TrackerStudio from "@/components/tracker/TrackerStudio";
 
-type Tab = "ponto" | "texto" | "borders" | "tracker";
+type Tab = "ponto" | "texto" | "tracker";
 
 export default function Home() {
   const source = useStore((s) => s.source);
@@ -26,42 +25,50 @@ export default function Home() {
     hydrateLibrary();
   }, [hydrateLibrary]);
 
-  const tabBtn = (id: Tab, label: string) => (
-    <button
-      onClick={() => setTab(id)}
-      className={`rounded px-3 py-1 text-[12px] transition-colors ${
-        tab === id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
-      }`}
-    >
-      {label}
-    </button>
-  );
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "ponto", label: "Pontilhismo" },
+    { id: "texto", label: "Texto" },
+    { id: "tracker", label: "Tracker" },
+  ];
 
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="glass-header flex h-12 shrink-0 items-center justify-between px-4">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <span className="h-3 w-3 rounded-full bg-red" />
-            <span className="mono text-sm font-bold tracking-tight">RC — POINTILISM GENERATOR</span>
-          </div>
-          <div className="flex items-center gap-1 rounded-md bg-[var(--panel-2)] p-1">
-            {tabBtn("ponto", "Pontilhismo")}
-            {tabBtn("texto", "Texto")}
-            {tabBtn("borders", "Borders")}
-            {tabBtn("tracker", "Tracker")}
-          </div>
+      <header className="glass-header relative flex h-12 shrink-0 items-center justify-between px-4">
+        {/* Brand */}
+        <div className="flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-red" />
+          <span className="mono text-[13px] font-semibold tracking-wider text-[var(--text)]">RC</span>
         </div>
 
+        {/* Tab switcher — centered */}
+        <nav className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-0 rounded-full bg-[var(--panel-2)] p-1">
+          {tabs.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`rounded-full px-4 py-1 text-[12px] font-medium transition-all ${
+                tab === id
+                  ? "bg-red text-white shadow-sm"
+                  : "text-muted hover:text-[var(--text)]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Actions (ponto only) */}
         {tab === "ponto" && (
           <div className="flex items-center gap-2">
             {source && (
-              <span className="mono hidden max-w-[160px] truncate text-[11px] text-muted lg:block">{fileName}</span>
+              <span className="mono hidden max-w-[140px] truncate text-[11px] text-muted lg:block">
+                {fileName}
+              </span>
             )}
             <button
               onClick={() => setBatchOpen(true)}
-              className="rounded border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
+              className="rounded-full border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
             >
               Lote
             </button>
@@ -69,7 +76,7 @@ export default function Home() {
               <>
                 <button
                   onClick={() => setShowOriginal(!showOriginal)}
-                  className={`rounded border px-3 py-1 text-[11px] transition-colors ${
+                  className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${
                     showOriginal ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"
                   }`}
                 >
@@ -77,7 +84,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={clearImage}
-                  className="rounded border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
+                  className="rounded-full border border-line px-3 py-1 text-[11px] text-muted hover:border-muted hover:text-[var(--text)]"
                 >
                   Nova imagem
                 </button>
@@ -86,21 +93,20 @@ export default function Home() {
           </div>
         )}
       </header>
+
       {batchOpen && <BatchModal onClose={() => setBatchOpen(false)} />}
 
       {/* Body */}
       {tab === "tracker" ? (
         <TrackerStudio />
-      ) : tab === "borders" ? (
-        <BordersStudio />
       ) : tab === "texto" ? (
         <TextStudio />
       ) : !source ? (
         <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">RC — Pointilism Generator</h1>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Pointilism Generator</h1>
             <p className="mt-2 max-w-md text-sm text-muted">
-              Upload a silhouette, icon or photo. Adjust dots, shapes, motion, colors and elastic cells. Export as SVG or PNG.
+              Faça upload de uma imagem. Ajuste pontos, formas, cores e efeitos. Exporte em SVG ou PNG.
             </p>
           </div>
           <UploadDropzone />
