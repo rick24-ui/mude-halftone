@@ -38,7 +38,7 @@ export default function Home() {
         {/* Brand */}
         <div className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-red" />
-          <span className="mono text-[13px] font-semibold tracking-wider text-[var(--text)]">RC</span>
+          <span className="mono text-[13px] font-semibold tracking-wider text-[var(--text)]">UPGM — LAB</span>
         </div>
 
         {/* Tab switcher — centered */}
@@ -104,7 +104,7 @@ export default function Home() {
       ) : !source ? (
         <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Pointilism Generator</h1>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">UPGM — Lab</h1>
             <p className="mt-2 max-w-md text-sm text-muted">
               Faça upload de uma imagem. Ajuste pontos, formas, cores e efeitos. Exporte em SVG ou PNG.
             </p>

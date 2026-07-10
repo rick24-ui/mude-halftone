@@ -6,8 +6,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Pointilism Generator",
-  description: "Converta imagens e textos em arte pontilhista. Ajuste pontos, formas, cores e exporte em SVG ou PNG.",
+  title: "UPGM — Lab",
+  description: "UPGM Lab — ferramentas criativas de pontilhismo, texto e tracking.",
 };
 
 // Fontes de display carregadas em runtime (não dependem de build/rede para subir o app).
