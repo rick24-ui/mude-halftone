@@ -36,8 +36,9 @@ export default function Home() {
       {/* Header */}
       <header className="glass-header relative flex h-12 shrink-0 items-center justify-between px-4">
         {/* Brand */}
-        <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-red" />
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="UPGM" className="h-5 w-auto opacity-90" />
           <span className="mono text-[13px] font-semibold tracking-wider text-[var(--text)]">UPGM — LAB</span>
         </div>
 

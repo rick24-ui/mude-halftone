@@ -8,6 +8,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "UPGM — Lab",
   description: "UPGM Lab — ferramentas criativas de pontilhismo, texto e tracking.",
+  icons: { icon: "/logo.svg" },
 };
 
 // Fontes de display carregadas em runtime (não dependem de build/rede para subir o app).
