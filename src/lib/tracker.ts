@@ -927,3 +927,181 @@ function applyAscii(
   }
   ctx.restore();
 }
+
+// ─── DEUSTUDIO oval overlay ──────────────────────────────────────────────────
+// Draws editorial fashion-style ellipses fitted to each body segment.
+// Each segment gets a thin-stroked oval oriented along its bone axis, with
+// small cross-tick markers at every joint connection point.
+
+interface DsSegDef {
+  name: string;
+  pts: string[];        // landmark names that define this segment
+  widthFactor: number;  // rShort = rLong * widthFactor  (perpendicular width)
+  lengthFactor: number; // rLong = halfSpan * lengthFactor (along bone)
+  minLong: number;      // minimum rLong as fraction of min(canvas.w, canvas.h)
+  minShort: number;     // minimum rShort as fraction of min(canvas.w, canvas.h)
+}
+
+const DS_SEGS: DsSegDef[] = [
+  { name: "head",        pts: ["nose", "left_ear",   "right_ear"],                               widthFactor: 0.88, lengthFactor: 1.1,  minLong: 0.048, minShort: 0.038 },
+  { name: "l_shoulder",  pts: ["left_shoulder",  "left_ear"],                                     widthFactor: 0.38, lengthFactor: 0.82, minLong: 0.022, minShort: 0.018 },
+  { name: "r_shoulder",  pts: ["right_shoulder", "right_ear"],                                    widthFactor: 0.38, lengthFactor: 0.82, minLong: 0.022, minShort: 0.018 },
+  { name: "chest",       pts: ["left_shoulder",  "right_shoulder", "left_hip", "right_hip"],      widthFactor: 0.52, lengthFactor: 1.05, minLong: 0.065, minShort: 0.05  },
+  { name: "l_upper_arm", pts: ["left_shoulder",  "left_elbow"],                                   widthFactor: 0.25, lengthFactor: 1.05, minLong: 0.022, minShort: 0.015 },
+  { name: "r_upper_arm", pts: ["right_shoulder", "right_elbow"],                                  widthFactor: 0.25, lengthFactor: 1.05, minLong: 0.022, minShort: 0.015 },
+  { name: "l_forearm",   pts: ["left_elbow",     "left_wrist"],                                   widthFactor: 0.21, lengthFactor: 1.05, minLong: 0.018, minShort: 0.012 },
+  { name: "r_forearm",   pts: ["right_elbow",    "right_wrist"],                                  widthFactor: 0.21, lengthFactor: 1.05, minLong: 0.018, minShort: 0.012 },
+  { name: "hips",        pts: ["left_hip",        "right_hip"],                                   widthFactor: 0.50, lengthFactor: 0.72, minLong: 0.048, minShort: 0.032 },
+  { name: "l_thigh",     pts: ["left_hip",         "left_knee"],                                  widthFactor: 0.28, lengthFactor: 1.05, minLong: 0.025, minShort: 0.016 },
+  { name: "r_thigh",     pts: ["right_hip",        "right_knee"],                                 widthFactor: 0.28, lengthFactor: 1.05, minLong: 0.025, minShort: 0.016 },
+  { name: "l_calf",      pts: ["left_knee",        "left_ankle"],                                 widthFactor: 0.23, lengthFactor: 1.05, minLong: 0.02,  minShort: 0.013 },
+  { name: "r_calf",      pts: ["right_knee",       "right_ankle"],                                widthFactor: 0.23, lengthFactor: 1.05, minLong: 0.02,  minShort: 0.013 },
+];
+
+// Thin lines connecting adjacent segment centroids
+const DS_CONNECTORS: [string, string][] = [
+  ["head",      "l_shoulder"], ["head",       "r_shoulder"],
+  ["l_shoulder","chest"],      ["r_shoulder", "chest"],
+  ["chest",     "l_upper_arm"],["chest",      "r_upper_arm"],
+  ["l_upper_arm","l_forearm"], ["r_upper_arm","r_forearm"],
+  ["chest",     "hips"],
+  ["hips",      "l_thigh"],   ["hips",       "r_thigh"],
+  ["l_thigh",   "l_calf"],    ["r_thigh",    "r_calf"],
+];
+
+// Keypoints that receive a cross tick mark
+const DS_TICK_POINTS = [
+  "nose","left_shoulder","right_shoulder","left_elbow","right_elbow",
+  "left_wrist","right_wrist","left_hip","right_hip",
+  "left_knee","right_knee","left_ankle","right_ankle",
+];
+
+interface DsDrawnSeg {
+  name: string;
+  cx: number; cy: number;
+  rLong: number; rShort: number; // rLong = long axis (along bone), rShort = width
+  angle: number;                 // ellipse rotation — ctx.ellipse radiusX aligned with bone
+  visible: boolean;
+}
+
+export function drawDeusStudioOverlay(
+  canvas: HTMLCanvasElement,
+  src: HTMLImageElement | HTMLCanvasElement,
+  points: TrackedPoint[],
+  opts: DrawOptions
+): void {
+  const w = canvas.width;
+  const h = canvas.height;
+  const minDim = Math.min(w, h);
+  const ctx = canvas.getContext("2d")!;
+
+  ctx.clearRect(0, 0, w, h);
+  drawFilteredImage(ctx, src, w, h, opts.filter, opts.color);
+
+  if (!points.length) return;
+
+  const map = new Map(points.map((p) => [p.name, p]));
+  const ptX = (p: TrackedPoint) => p.x * w;
+  const ptY = (p: TrackedPoint) => p.y * h;
+
+  const color = opts.color;
+  const strokeW = Math.max(0.5, opts.lineWidth * 0.5);
+
+  // Compute ellipse geometry for each segment
+  const segs: DsDrawnSeg[] = DS_SEGS.map((def): DsDrawnSeg => {
+    const valid = def.pts
+      .map((n) => map.get(n))
+      .filter((p): p is TrackedPoint => p !== undefined && p.score > 0.2);
+
+    if (!valid.length) return { name: def.name, cx: 0, cy: 0, rLong: 0, rShort: 0, angle: 0, visible: false };
+
+    const cx = valid.reduce((s, p) => s + ptX(p), 0) / valid.length;
+    const cy = valid.reduce((s, p) => s + ptY(p), 0) / valid.length;
+    const minLongPx  = def.minLong  * minDim;
+    const minShortPx = def.minShort * minDim;
+
+    let angle = 0, rLong = minLongPx, rShort = minShortPx;
+
+    if (valid.length === 1) {
+      rLong  = Math.max(minLongPx,  minDim * 0.044);
+      rShort = Math.max(minShortPx, rLong * def.widthFactor);
+    } else if (valid.length === 2) {
+      const dx = ptX(valid[1]) - ptX(valid[0]);
+      const dy = ptY(valid[1]) - ptY(valid[0]);
+      const span = Math.hypot(dx, dy);
+      angle  = Math.atan2(dy, dx);
+      rLong  = Math.max(minLongPx,  span * 0.5 * def.lengthFactor);
+      rShort = Math.max(minShortPx, rLong * def.widthFactor);
+    } else {
+      const xs = valid.map((p) => ptX(p));
+      const ys = valid.map((p) => ptY(p));
+      const bw = Math.max(...xs) - Math.min(...xs);
+      const bh = Math.max(...ys) - Math.min(...ys);
+      const pad = minDim * 0.022;
+      if (bh >= bw) {
+        angle  = Math.PI / 2;
+        rLong  = Math.max(minLongPx,  (bh * 0.5 + pad) * def.lengthFactor);
+        rShort = Math.max(minShortPx, (bw * 0.5 + pad) * def.widthFactor);
+      } else {
+        angle  = 0;
+        rLong  = Math.max(minLongPx,  (bw * 0.5 + pad) * def.lengthFactor);
+        rShort = Math.max(minShortPx, (bh * 0.5 + pad) * def.widthFactor);
+      }
+    }
+
+    return { name: def.name, cx, cy, rLong, rShort, angle, visible: true };
+  });
+
+  const segMap = new Map(segs.map((s) => [s.name, s]));
+
+  // ── Connector lines between adjacent segment centroids
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(0.3, strokeW * 0.45);
+  ctx.globalAlpha = 0.28;
+  ctx.lineCap = "round";
+  DS_CONNECTORS.forEach(([a, b]) => {
+    const sa = segMap.get(a), sb = segMap.get(b);
+    if (!sa?.visible || !sb?.visible) return;
+    ctx.beginPath();
+    ctx.moveTo(sa.cx, sa.cy);
+    ctx.lineTo(sb.cx, sb.cy);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // ── Ellipses — the core DEUSTUDIO look
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = strokeW;
+  ctx.globalAlpha = 0.88;
+  segs.forEach((seg) => {
+    if (!seg.visible) return;
+    ctx.beginPath();
+    ctx.ellipse(seg.cx, seg.cy, seg.rLong, seg.rShort, seg.angle, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // ── Cross tick marks at joint positions
+  const tickLen = Math.max(3, minDim * 0.007);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(0.4, strokeW * 0.75);
+  ctx.globalAlpha = 0.72;
+  ctx.lineCap = "round";
+  DS_TICK_POINTS.forEach((name) => {
+    const p = map.get(name);
+    if (!p || p.score < 0.25) return;
+    const x = ptX(p), y = ptY(p);
+    ctx.beginPath();
+    ctx.moveTo(x - tickLen, y); ctx.lineTo(x + tickLen, y);
+    ctx.moveTo(x, y - tickLen); ctx.lineTo(x, y + tickLen);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  if (opts.scanlines) applyScanlines(ctx, w, h);
+  if (opts.grain) applyGrain(ctx, w, h);
+  if (opts.vignette) applyVignette(ctx, w, h);
+}

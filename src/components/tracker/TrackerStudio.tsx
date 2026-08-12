@@ -5,6 +5,7 @@ import {
   detectPoints,
   detectEnvironmentPoints,
   drawOverlay,
+  drawDeusStudioOverlay,
   loadDetector,
   placeZoomInset,
   TrackedPoint,
@@ -27,6 +28,7 @@ import { downloadBlob, timestampName } from "@/lib/export";
 
 type Status = "idle" | "loading-model" | "detecting" | "done" | "no-person" | "error";
 type MediaType = "image" | "video";
+type VisualStyle = "standard" | "deustudio";
 
 const TRACK_MODES: { id: TrackMode; label: string; hint: string }[] = [
   { id: "person", label: "Pessoa", hint: "Detecta o corpo da pessoa com IA (pose)." },
@@ -270,6 +272,7 @@ export default function TrackerStudio() {
   const [dragging, setDragging] = useState(false);
   const [autoDetect, setAutoDetect] = useState(true);
   const [trackMode, setTrackMode] = useState<TrackMode>("person");
+  const [visualStyle, setVisualStyle] = useState<VisualStyle>("standard");
   // How fast displayed points catch up to new detections (0.08–0.9) and how
   // often/dense detection re-runs during video playback (1–10)
   const [trackSpeed, setTrackSpeed] = useState(0.35);
@@ -288,6 +291,11 @@ export default function TrackerStudio() {
   // History of meaningful option/mode changes, shown as a stack of "layers" —
   // most recent first, click to restore that snapshot
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  // Stable ref so callbacks always read the current visual style without
+  // having to re-create every time the user switches style
+  const vsRef = useRef<VisualStyle>(visualStyle);
+  vsRef.current = visualStyle;
 
   const imgRef = useRef<HTMLImageElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -313,6 +321,25 @@ export default function TrackerStudio() {
   const set = <K extends keyof DrawOptions>(key: K, val: DrawOptions[K]) =>
     setOpts((o) => ({ ...o, [key]: val }));
 
+  // Routes the draw call through the active visual style — use this everywhere
+  // instead of calling drawOverlay directly so the DEUSTUDIO style stays in sync
+  const renderFrame = useCallback(
+    (
+      cvs: HTMLCanvasElement,
+      src: HTMLImageElement | HTMLCanvasElement,
+      pts: TrackedPoint[],
+      drawOpts: DrawOptions,
+      ro?: { interactive?: boolean }
+    ) => {
+      if (vsRef.current === "deustudio") {
+        drawDeusStudioOverlay(cvs, src, pts, drawOpts);
+      } else {
+        drawOverlay(cvs, src, pts, drawOpts, ro);
+      }
+    },
+    []
+  );
+
   // Size the canvas to the image and draw the first frame once it's mounted
   // (the <canvas> only enters the DOM after imgSrc is set, so this can't
   // happen synchronously inside the image's onload handler).
@@ -327,11 +354,11 @@ export default function TrackerStudio() {
     ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
   }, [imgSrc, mediaType]);
 
-  // Redraw whenever options or points change (or "Embaralhar" is pressed)
+  // Redraw whenever options, points, or visual style change (or "Embaralhar" is pressed)
   useEffect(() => {
     if (mediaType !== "image" || !canvasRef.current || !imgRef.current || !points.length) return;
-    drawOverlay(canvasRef.current, imgRef.current, points, opts, { interactive: true });
-  }, [opts, points, shuffleTick, mediaType]);
+    renderFrame(canvasRef.current, imgRef.current, points, opts, { interactive: true });
+  }, [opts, points, shuffleTick, mediaType, visualStyle, renderFrame]);
 
   const mountFile = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
@@ -497,7 +524,7 @@ export default function TrackerStudio() {
       setStatus("detecting");
       const pts = detectEnvironmentPoints(imageToCanvas(imgRef.current), envPointCount(trackDensity));
       setPoints(pts);
-      if (canvasRef.current) drawOverlay(canvasRef.current, imgRef.current, pts, opts);
+      if (canvasRef.current) renderFrame(canvasRef.current, imgRef.current, pts, opts);
       setStatus("done");
       return;
     }
@@ -509,9 +536,9 @@ export default function TrackerStudio() {
     const pts = await detectPoints(imgRef.current);
     if (!pts.length) { setStatus("no-person"); return; }
     setPoints(pts);
-    if (canvasRef.current) drawOverlay(canvasRef.current, imgRef.current, pts, opts);
+    if (canvasRef.current) renderFrame(canvasRef.current, imgRef.current, pts, opts);
     setStatus("done");
-  }, [opts, trackMode, trackDensity]);
+  }, [opts, trackMode, trackDensity, renderFrame]);
 
   // Auto-detect right after a new image is mounted, when enabled
   useEffect(() => {
@@ -558,8 +585,8 @@ export default function TrackerStudio() {
     const frameCanvas = frameCanvasRef.current;
     if (!video || !canvas || !frameCanvas) return;
     frameCanvas.getContext("2d")!.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
-    drawOverlay(canvas, frameCanvas, pts, opts, { interactive: true });
-  }, [points, opts]);
+    renderFrame(canvas, frameCanvas, pts, opts, { interactive: true });
+  }, [points, opts, renderFrame]);
 
   // Keep the smoothing target in sync with the latest detection result
   useEffect(() => {
@@ -717,7 +744,7 @@ export default function TrackerStudio() {
     const exportCanvas = document.createElement("canvas");
     exportCanvas.width = video.videoWidth;
     exportCanvas.height = video.videoHeight;
-    drawOverlay(exportCanvas, frameSrc, points, exportOptsAt(video.videoWidth));
+    renderFrame(exportCanvas, frameSrc, points, exportOptsAt(video.videoWidth));
     exportCanvas.toBlob(
       (blob) => { if (blob) downloadBlob(blob, timestampName("rc-tracker-frame", "png")); },
       "image/png"
@@ -777,7 +804,7 @@ export default function TrackerStudio() {
           if (!v || v.currentTime >= videoDuration || v.ended) { resolve(); return; }
           exportFrameCtx.drawImage(v, 0, 0, exportW, exportH);
           exportDisplayPoints = lerpPoints(exportDisplayPoints, framePointsRef.current, trackSpeed);
-          drawOverlay(exportCanvas, exportFrame, exportDisplayPoints, exportOpts);
+          renderFrame(exportCanvas, exportFrame, exportDisplayPoints, exportOpts);
           requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -793,7 +820,7 @@ export default function TrackerStudio() {
     } finally {
       setExportingVideo(false);
     }
-  }, [videoDuration, points, exportOptsAt, trackSpeed]);
+  }, [videoDuration, points, exportOptsAt, trackSpeed, renderFrame]);
 
   const exportPNG = useCallback(() => {
     if (!imgRef.current || !points.length) return;
@@ -804,12 +831,12 @@ export default function TrackerStudio() {
     const exportCanvas = document.createElement("canvas");
     exportCanvas.width = img.naturalWidth;
     exportCanvas.height = img.naturalHeight;
-    drawOverlay(exportCanvas, img, points, opts);
+    renderFrame(exportCanvas, img, points, opts);
     exportCanvas.toBlob(
       (blob) => { if (blob) downloadBlob(blob, timestampName("rc-tracker", "png")); },
       "image/png"
     );
-  }, [points, opts]);
+  }, [points, opts, renderFrame]);
 
   // Tracks meaningful changes to opts/trackMode/trackSpeed/trackDensity and
   // appends a labeled entry to the history/layers panel. Discrete changes
@@ -1031,6 +1058,33 @@ export default function TrackerStudio() {
                   </p>
                 </label>
               </>
+            )}
+          </Section>
+
+          {/* Visual style — Standard vs DEUSTUDIO oval overlay */}
+          <Section title="Estilo visual">
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                { id: "standard", label: "Padrão" },
+                { id: "deustudio", label: "DEUSTUDIO" },
+              ] as { id: VisualStyle; label: string }[]).map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setVisualStyle(id)}
+                  className={`rounded border px-2 py-2 text-[11px] font-medium tracking-wide transition-colors ${
+                    visualStyle === id
+                      ? "border-red bg-red/10 text-[var(--text)]"
+                      : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {visualStyle === "deustudio" && (
+              <p className="text-[10px] leading-snug text-muted">
+                Ovals finos sobre cada segmento do corpo — estética editorial de moda. Espessuras controladas por "Espessura".
+              </p>
             )}
           </Section>
 
