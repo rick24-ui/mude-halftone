@@ -8,8 +8,9 @@ import ControlsPanel from "@/components/ControlsPanel";
 import BatchModal from "@/components/BatchModal";
 import TextStudio from "@/components/text/TextStudio";
 import TrackerStudio from "@/components/tracker/TrackerStudio";
+import ParticleStudio from "@/components/particle/ParticleStudio";
 
-type Tab = "ponto" | "texto" | "tracker";
+type Tab = "ponto" | "texto" | "tracker" | "particulas";
 
 export default function Home() {
   const source = useStore((s) => s.source);
@@ -29,6 +30,7 @@ export default function Home() {
     { id: "ponto", label: "Pontilhismo" },
     { id: "texto", label: "Texto" },
     { id: "tracker", label: "Tracker" },
+    { id: "particulas", label: "Partículas" },
   ];
 
   return (
@@ -98,7 +100,9 @@ export default function Home() {
       {batchOpen && <BatchModal onClose={() => setBatchOpen(false)} />}
 
       {/* Body */}
-      {tab === "tracker" ? (
+      {tab === "particulas" ? (
+        <ParticleStudio />
+      ) : tab === "tracker" ? (
         <TrackerStudio />
       ) : tab === "texto" ? (
         <TextStudio />
