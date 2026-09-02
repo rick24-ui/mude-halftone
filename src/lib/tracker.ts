@@ -929,17 +929,26 @@ function applyAscii(
 }
 
 // ─── DEUSTUDIO oval overlay ──────────────────────────────────────────────────
-// Draws editorial fashion-style ellipses fitted to each body segment.
-// Each segment gets a thin-stroked oval oriented along its bone axis, with
-// small cross-tick markers at every joint connection point.
+// Editorial fashion-style ellipses fitted to each body segment, with full
+// support for multi-ring layers, constellation network, zoom insets, labels,
+// glow and jitter — feature-parity with the standard overlay.
+//
+// Slider mapping in DEUSTUDIO mode:
+//   Linha       → stroke weight of every ring
+//   Ponto (2–10) → ring count per segment: 2→1, 4→2, 6→3, 8→4, 10→5
+//   Aleatoriedade → satellite ring count and spread (0→none, 1→dense cloud)
+//   Conectar pontos → constellation network between all segment centroids
+//   Densidade da rede → neighbor connections per centroid
+//   Glow nos pontos → soft glow halo around every ring
+//   Labels / Coords → segment labels / normalized coordinate readouts
 
 interface DsSegDef {
   name: string;
-  pts: string[];        // landmark names that define this segment
-  widthFactor: number;  // rShort = rLong * widthFactor  (perpendicular width)
-  lengthFactor: number; // rLong = halfSpan * lengthFactor (along bone)
-  minLong: number;      // minimum rLong as fraction of min(canvas.w, canvas.h)
-  minShort: number;     // minimum rShort as fraction of min(canvas.w, canvas.h)
+  pts: string[];
+  widthFactor: number;
+  lengthFactor: number;
+  minLong: number;
+  minShort: number;
 }
 
 const DS_SEGS: DsSegDef[] = [
@@ -958,57 +967,43 @@ const DS_SEGS: DsSegDef[] = [
   { name: "r_calf",      pts: ["right_knee",       "right_ankle"],                                widthFactor: 0.23, lengthFactor: 1.05, minLong: 0.02,  minShort: 0.013 },
 ];
 
-// Thin lines connecting adjacent segment centroids
 const DS_CONNECTORS: [string, string][] = [
-  ["head",      "l_shoulder"], ["head",       "r_shoulder"],
-  ["l_shoulder","chest"],      ["r_shoulder", "chest"],
-  ["chest",     "l_upper_arm"],["chest",      "r_upper_arm"],
-  ["l_upper_arm","l_forearm"], ["r_upper_arm","r_forearm"],
-  ["chest",     "hips"],
-  ["hips",      "l_thigh"],   ["hips",       "r_thigh"],
-  ["l_thigh",   "l_calf"],    ["r_thigh",    "r_calf"],
+  ["head","l_shoulder"],["head","r_shoulder"],
+  ["l_shoulder","chest"],["r_shoulder","chest"],
+  ["chest","l_upper_arm"],["chest","r_upper_arm"],
+  ["l_upper_arm","l_forearm"],["r_upper_arm","r_forearm"],
+  ["chest","hips"],
+  ["hips","l_thigh"],["hips","r_thigh"],
+  ["l_thigh","l_calf"],["r_thigh","r_calf"],
 ];
 
-// Keypoints that receive a cross tick mark
 const DS_TICK_POINTS = [
   "nose","left_shoulder","right_shoulder","left_elbow","right_elbow",
   "left_wrist","right_wrist","left_hip","right_hip",
   "left_knee","right_knee","left_ankle","right_ankle",
 ];
 
+// Concentric ring scale/alpha table — index 0 is the primary ring
+const DS_RING_SCALES = [1.0, 0.62, 1.42, 0.42, 1.75];
+const DS_RING_ALPHAS = [0.88, 0.42, 0.30, 0.22, 0.16];
+
 interface DsDrawnSeg {
   name: string;
   cx: number; cy: number;
-  rLong: number; rShort: number; // rLong = long axis (along bone), rShort = width
-  angle: number;                 // ellipse rotation — ctx.ellipse radiusX aligned with bone
+  rLong: number; rShort: number;
+  angle: number;
   visible: boolean;
 }
 
-export function drawDeusStudioOverlay(
-  canvas: HTMLCanvasElement,
-  src: HTMLImageElement | HTMLCanvasElement,
-  points: TrackedPoint[],
-  opts: DrawOptions
-): void {
-  const w = canvas.width;
-  const h = canvas.height;
-  const minDim = Math.min(w, h);
-  const ctx = canvas.getContext("2d")!;
-
-  ctx.clearRect(0, 0, w, h);
-  drawFilteredImage(ctx, src, w, h, opts.filter, opts.color);
-
-  if (!points.length) return;
-
-  const map = new Map(points.map((p) => [p.name, p]));
+function computeDsSegs(
+  pts: ReadonlyArray<TrackedPoint>,
+  w: number, h: number, minDim: number
+): DsDrawnSeg[] {
+  const map = new Map(pts.map((p) => [p.name, p]));
   const ptX = (p: TrackedPoint) => p.x * w;
   const ptY = (p: TrackedPoint) => p.y * h;
 
-  const color = opts.color;
-  const strokeW = Math.max(0.5, opts.lineWidth * 0.5);
-
-  // Compute ellipse geometry for each segment
-  const segs: DsDrawnSeg[] = DS_SEGS.map((def): DsDrawnSeg => {
+  return DS_SEGS.map((def): DsDrawnSeg => {
     const valid = def.pts
       .map((n) => map.get(n))
       .filter((p): p is TrackedPoint => p !== undefined && p.score > 0.2);
@@ -1051,14 +1046,76 @@ export function drawDeusStudioOverlay(
 
     return { name: def.name, cx, cy, rLong, rShort, angle, visible: true };
   });
+}
 
+export function drawDeusStudioOverlay(
+  canvas: HTMLCanvasElement,
+  src: HTMLImageElement | HTMLCanvasElement,
+  points: TrackedPoint[],
+  opts: DrawOptions,
+  renderOpts: { interactive?: boolean } = {}
+): void {
+  const interactive = renderOpts.interactive ?? false;
+  const w = canvas.width;
+  const h = canvas.height;
+  const minDim = Math.min(w, h);
+  const ctx = canvas.getContext("2d")!;
+
+  ctx.clearRect(0, 0, w, h);
+  drawFilteredImage(ctx, src, w, h, opts.filter, opts.color);
+
+  if (!points.length) return;
+
+  const map = new Map(points.map((p) => [p.name, p]));
+  const ptX = (p: TrackedPoint) => p.x * w;
+  const ptY = (p: TrackedPoint) => p.y * h;
+  const color = opts.color;
+  const strokeW = Math.max(0.5, opts.lineWidth * 0.5);
+
+  // dotRadius (2–10) controls how many concentric rings per segment (1–5)
+  const ringCount = Math.max(1, Math.min(5, Math.round(opts.dotRadius / 2)));
+  // boxJitter controls satellite ring count (0→0, 1→8) and spread
+  const satelliteCount = Math.round(opts.boxJitter * 8);
+
+  const segs = computeDsSegs(points, w, h, minDim);
+  const visibleSegs = segs.filter((s) => s.visible);
   const segMap = new Map(segs.map((s) => [s.name, s]));
 
-  // ── Connector lines between adjacent segment centroids
+  // ── Constellation network — connects all visible centroids ─────────────────
+  if (opts.connections) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(0.25, strokeW * 0.38);
+    ctx.lineCap = "round";
+    if (opts.connectionGlow) { ctx.shadowColor = color; ctx.shadowBlur = 6; }
+
+    const k = Math.max(1, Math.round(1 + opts.connectionDensity * 4));
+    const drawn = new Set<string>();
+    visibleSegs.forEach((seg) => {
+      visibleSegs
+        .filter((s) => s !== seg)
+        .map((s) => ({ s, d: Math.hypot(seg.cx - s.cx, seg.cy - s.cy) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, k)
+        .forEach(({ s }) => {
+          const key = [seg.name, s.name].sort().join("|");
+          if (drawn.has(key)) return;
+          drawn.add(key);
+          ctx.globalAlpha = Math.max(0.08, 0.45 - Math.hypot(seg.cx - s.cx, seg.cy - s.cy) / minDim * 0.4);
+          ctx.beginPath();
+          ctx.moveTo(seg.cx, seg.cy);
+          ctx.lineTo(s.cx, s.cy);
+          ctx.stroke();
+        });
+    });
+    ctx.restore();
+  }
+
+  // ── Structural connector lines between adjacent segments (always drawn) ────
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = Math.max(0.3, strokeW * 0.45);
-  ctx.globalAlpha = 0.28;
+  ctx.globalAlpha = 0.3;
   ctx.lineCap = "round";
   DS_CONNECTORS.forEach(([a, b]) => {
     const sa = segMap.get(a), sb = segMap.get(b);
@@ -1070,26 +1127,54 @@ export function drawDeusStudioOverlay(
   });
   ctx.restore();
 
-  // ── Ellipses — the core DEUSTUDIO look
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = strokeW;
-  ctx.globalAlpha = 0.88;
-  segs.forEach((seg) => {
-    if (!seg.visible) return;
+  // ── Ellipse drawing helper ─────────────────────────────────────────────────
+  function strokeEllipse(
+    cx: number, cy: number,
+    rL: number, rS: number,
+    ang: number,
+    alpha: number,
+    sw: number
+  ) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = sw;
+    ctx.globalAlpha = alpha;
+    if (opts.dotGlow) { ctx.shadowColor = color; ctx.shadowBlur = rL * 0.28; }
     ctx.beginPath();
-    ctx.ellipse(seg.cx, seg.cy, seg.rLong, seg.rShort, seg.angle, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, rL, rS, ang, 0, Math.PI * 2);
     ctx.stroke();
-  });
-  ctx.restore();
+    ctx.restore();
+  }
 
-  // ── Cross tick marks at joint positions
-  const tickLen = Math.max(3, minDim * 0.007);
+  // ── Multi-ring ellipses + jitter satellites ────────────────────────────────
+  visibleSegs.forEach((seg) => {
+    // Concentric rings (count = ringCount, controlled by "Ponto" slider)
+    for (let ri = 0; ri < ringCount; ri++) {
+      const scale = DS_RING_SCALES[ri] ?? (1 + (ri - 4) * 0.28);
+      const alpha = DS_RING_ALPHAS[ri] ?? 0.10;
+      strokeEllipse(seg.cx, seg.cy, seg.rLong * scale, seg.rShort * scale, seg.angle, alpha, strokeW);
+    }
+
+    // Satellite ghost rings (count = satelliteCount, controlled by "Aleatoriedade")
+    const spread = Math.max(seg.rLong, seg.rShort) * opts.boxJitter;
+    for (let si = 0; si < satelliteCount; si++) {
+      const cx = seg.cx + (Math.random() - 0.5) * 2 * spread;
+      const cy = seg.cy + (Math.random() - 0.5) * 2 * spread;
+      const sf = 0.30 + Math.random() * 0.60;
+      const ang = seg.angle + (Math.random() - 0.5) * 1.2 * opts.boxJitter;
+      const alpha = 0.10 + Math.random() * 0.22;
+      strokeEllipse(cx, cy, seg.rLong * sf, seg.rShort * sf, ang, alpha, Math.max(0.25, strokeW * 0.45));
+    }
+  });
+
+  // ── Cross tick marks at keypoint joints ───────────────────────────────────
+  const tickLen = Math.max(3, minDim * 0.008);
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = Math.max(0.4, strokeW * 0.75);
-  ctx.globalAlpha = 0.72;
+  ctx.lineWidth = Math.max(0.4, strokeW * 0.85);
+  ctx.globalAlpha = 0.75;
   ctx.lineCap = "round";
+  if (opts.dotGlow) { ctx.shadowColor = color; ctx.shadowBlur = tickLen * 2; }
   DS_TICK_POINTS.forEach((name) => {
     const p = map.get(name);
     if (!p || p.score < 0.25) return;
@@ -1100,6 +1185,117 @@ export function drawDeusStudioOverlay(
     ctx.stroke();
   });
   ctx.restore();
+
+  // ── Segment labels ─────────────────────────────────────────────────────────
+  if (opts.showLabels) {
+    const fontSize = Math.max(8, w * 0.009);
+    ctx.save();
+    ctx.font = `${fontSize}px ${opts.labelFont}`;
+    ctx.textBaseline = "top";
+    visibleSegs.forEach((seg) => {
+      const label = `${seg.name.replace(/_/g, " ").toUpperCase()} ${uid()}`;
+      const tw = ctx.measureText(label).width;
+      const lx = seg.cx + seg.rLong * 0.52 + 3;
+      const ly = seg.cy - fontSize / 2;
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fillRect(lx - 2, ly - 1, tw + 4, fontSize + 2);
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = color;
+      ctx.fillText(label, lx, ly);
+    });
+    ctx.restore();
+  }
+
+  // ── Floating coordinate readouts ───────────────────────────────────────────
+  if (opts.showCoords) {
+    ctx.save();
+    ctx.font = `${Math.max(8, w * 0.0088)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = "middle";
+    ctx.globalAlpha = 0.5;
+    points.forEach((p) => {
+      if (p.score < 0.3) return;
+      ctx.fillText(`${(p.x * 100).toFixed(1)} ${(p.y * 100).toFixed(1)}`, ptX(p) + tickLen * 1.6, ptY(p));
+    });
+    ctx.restore();
+  }
+
+  // ── Zoom insets (click-to-place, drag/resize like standard overlay) ────────
+  if (opts.zoomInset && opts.zoomInsets.length) {
+    const filterCache = new Map<ImageFilter, HTMLCanvasElement>();
+    const scaleX = (src instanceof HTMLImageElement ? src.naturalWidth : src.width) / w;
+    const scaleY = (src instanceof HTMLImageElement ? src.naturalHeight : src.height) / h;
+    const cropSize = Math.min(w, h) * 0.16;
+    const fontSize = Math.max(9, w * 0.011);
+    ctx.font = `${fontSize}px ${opts.labelFont}`;
+    ctx.textBaseline = "top";
+
+    opts.zoomInsets.forEach((inset) => {
+      const fp = map.get(inset.point);
+      if (!fp) return;
+
+      const cropX = Math.max(0, ptX(fp) - cropSize / 2);
+      const cropY = Math.max(0, ptY(fp) - cropSize / 2);
+      const iSize = inset.size * Math.min(w, h);
+      const iX = inset.x * w;
+      const iY = inset.y * h;
+
+      const insetFilter = opts.insetFilter ?? "none";
+      const iSrc = insetFilter !== "none"
+        ? getFilteredCanvas(filterCache, src, w, h, insetFilter, color)
+        : src;
+      const sx = insetFilter !== "none" ? cropX : cropX * scaleX;
+      const sy = insetFilter !== "none" ? cropY : cropY * scaleY;
+      const sw = insetFilter !== "none" ? cropSize : cropSize * scaleX;
+      const sh = insetFilter !== "none" ? cropSize : cropSize * scaleY;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(iX, iY, iSize, iSize);
+      ctx.clip();
+      ctx.drawImage(iSrc, sx, sy, sw, sh, iX, iY, iSize, iSize);
+      ctx.restore();
+
+      if (opts.connections) {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(0.5, strokeW * 0.5);
+        ctx.globalAlpha = 0.5;
+        if (opts.connectionGlow) { ctx.shadowColor = color; ctx.shadowBlur = 8; }
+        ctx.beginPath();
+        ctx.moveTo(ptX(fp), ptY(fp));
+        ctx.lineTo(iX + iSize / 2, iY + iSize / 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = strokeW;
+      ctx.globalAlpha = 0.85;
+      ctx.strokeRect(iX, iY, iSize, iSize);
+
+      if (opts.showLabels) {
+        const lbl = `ZOOM ${inset.point.replace(/_/g, " ").toUpperCase()} ${uid()}`;
+        ctx.globalAlpha = 0.9;
+        const tw = ctx.measureText(lbl).width;
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(iX, iY + iSize + 2, tw + 8, fontSize + 4);
+        ctx.fillStyle = color;
+        ctx.fillText(lbl, iX + 4, iY + iSize + 4);
+      }
+
+      if (interactive) {
+        const handle = Math.max(10, iSize * 0.07);
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = color;
+        ctx.fillRect(iX + iSize - handle, iY + iSize - handle, handle, handle);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    });
+  }
 
   if (opts.scanlines) applyScanlines(ctx, w, h);
   if (opts.grain) applyGrain(ctx, w, h);

@@ -332,7 +332,7 @@ export default function TrackerStudio() {
       ro?: { interactive?: boolean }
     ) => {
       if (vsRef.current === "deustudio") {
-        drawDeusStudioOverlay(cvs, src, pts, drawOpts);
+        drawDeusStudioOverlay(cvs, src, pts, drawOpts, ro);
       } else {
         drawOverlay(cvs, src, pts, drawOpts, ro);
       }
@@ -1070,7 +1070,24 @@ export default function TrackerStudio() {
               ] as { id: VisualStyle; label: string }[]).map(({ id, label }) => (
                 <button
                   key={id}
-                  onClick={() => setVisualStyle(id)}
+                  onClick={() => {
+                    setVisualStyle(id);
+                    // Preset recommended settings when switching to DEUSTUDIO
+                    if (id === "deustudio") {
+                      setOpts((o) => ({
+                        ...o,
+                        dotRadius: 6,       // 3 concentric rings
+                        boxJitter: 0.45,    // moderate satellite cloud
+                        connections: true,
+                        connectionDensity: 0.55,
+                        showLabels: true,
+                        showCoords: true,
+                        showKeypoints: false,
+                        showSkeleton: false,
+                        showBoxes: false,
+                      }));
+                    }
+                  }}
                   className={`rounded border px-2 py-2 text-[11px] font-medium tracking-wide transition-colors ${
                     visualStyle === id
                       ? "border-red bg-red/10 text-[var(--text)]"
@@ -1082,9 +1099,15 @@ export default function TrackerStudio() {
               ))}
             </div>
             {visualStyle === "deustudio" && (
-              <p className="text-[10px] leading-snug text-muted">
-                Ovals finos sobre cada segmento do corpo — estética editorial de moda. Espessuras controladas por "Espessura".
-              </p>
+              <div className="space-y-1 rounded bg-[var(--panel-2)] px-2.5 py-2">
+                <p className="text-[10px] font-medium text-[var(--text)]">Mapeamento dos controles</p>
+                <p className="text-[9px] leading-relaxed text-muted">
+                  <span className="text-[var(--text)]">Ponto 2–10</span> → anéis por segmento (2=1, 10=5)<br/>
+                  <span className="text-[var(--text)]">Aleatoriedade</span> → nuvem de satélites ao redor<br/>
+                  <span className="text-[var(--text)]">Conectar pontos</span> → rede entre centroides<br/>
+                  <span className="text-[var(--text)]">Glow nos pontos</span> → halo em todos os anéis
+                </p>
+              </div>
             )}
           </Section>
 
