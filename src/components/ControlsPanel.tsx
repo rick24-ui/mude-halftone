@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useStore } from "@/store/useStore";
 import Slider from "./Slider";
-import { PanelSection as Section, SegmentedRow as Segmented, Toggle, ColorField } from "@/components/ui/panel";
+import { PanelSection as Section, SegmentedRow as Segmented, Toggle, ColorField, PresetGrid } from "@/components/ui/panel";
 import { PRESETS, RED, INK, PAPER } from "@/lib/types";
 import { sampleDots } from "@/lib/engine";
 import { exportPNG, exportSVG, exportPDF, copyPNGToClipboard, exportGIF, exportVideo } from "@/lib/export";
@@ -68,21 +68,7 @@ export default function ControlsPanel() {
             Reset
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              onClick={() => applyPreset(preset)}
-              className={`rounded border px-2 py-2 text-left text-[11px] transition-colors ${
-                presetId === preset.id
-                  ? "border-red bg-red/10 text-[var(--text)]"
-                  : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
-              }`}
-            >
-              {preset.name}
-            </button>
-          ))}
-        </div>
+        <PresetGrid items={PRESETS} isActive={(preset) => presetId === preset.id} onSelect={applyPreset} />
       </div>
 
       <div className="thin-scroll flex-1 overflow-y-auto">

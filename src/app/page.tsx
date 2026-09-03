@@ -12,7 +12,18 @@ import ParticleStudio from "@/components/particle/ParticleStudio";
 
 type Tab = "ponto" | "texto" | "tracker" | "particulas";
 
-// ─── Rail icons — minimal line/dot marks, one per functionality ────────────
+// ─── Icons — minimal line/dot marks, one per functionality, shared by the
+// rail cards and the home cards so the whole app reads as one icon set ────
+
+function IconHome() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+      <path d="M2.5 8.5 9 3l6.5 5.5" strokeLinecap="round" />
+      <path d="M4 7.5V15h10V7.5" />
+      <path d="M7.2 15v-4.2h3.6V15" />
+    </svg>
+  );
+}
 
 function IconDots() {
   return (
@@ -61,25 +72,48 @@ function IconParticles() {
   );
 }
 
-const TABS: { id: Tab; num: string; label: string; icon: () => React.ReactNode }[] = [
-  { id: "ponto",      num: "01", label: "Pontilhismo", icon: IconDots },
-  { id: "texto",      num: "02", label: "Texto",       icon: IconType },
-  { id: "tracker",    num: "03", label: "Tracker",     icon: IconTarget },
-  { id: "particulas", num: "04", label: "Partículas",  icon: IconParticles },
+const TABS: { id: Tab; num: string; label: string; desc: string; icon: () => React.ReactNode }[] = [
+  {
+    id: "ponto",
+    num: "01",
+    label: "Pontilhismo",
+    desc: "Transforme imagens em composições de pontos — grades, cores e movimento.",
+    icon: IconDots,
+  },
+  {
+    id: "texto",
+    num: "02",
+    label: "Texto",
+    desc: "Componha tipografia com efeitos de pontilhismo e exporte em alta resolução.",
+    icon: IconType,
+  },
+  {
+    id: "tracker",
+    num: "03",
+    label: "Tracker",
+    desc: "Rastreamento de pose e ambiente com IA, sobre imagem ou vídeo.",
+    icon: IconTarget,
+  },
+  {
+    id: "particulas",
+    num: "04",
+    label: "Partículas",
+    desc: "Motor de partículas com morph, timeline e exportação em vídeo.",
+    icon: IconParticles,
+  },
 ];
 
-// ─── Rail button — icon + number, red active rail, label tooltip on hover ──
+// ─── Rail card — compact card selector, same visual language as the home
+// cards (border, red on hover/active) so both read as one system ──────────
 
-function RailButton({
+function RailCard({
   active,
   icon,
-  num,
   label,
   onClick,
 }: {
   active: boolean;
   icon: React.ReactNode;
-  num: string;
   label: string;
   onClick: () => void;
 }) {
@@ -87,26 +121,14 @@ function RailButton({
     <button
       onClick={onClick}
       title={label}
-      className={`group relative flex w-full flex-col items-center gap-1.5 py-3 transition-colors ${
-        active ? "text-red" : "text-muted hover:text-[var(--text)]"
+      className={`group relative flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg border transition-all ${
+        active
+          ? "border-red bg-red/10 text-red"
+          : "border-transparent text-muted hover:border-line hover:bg-[var(--panel-2)] hover:text-[var(--text)]"
       }`}
     >
-      {/* active indicator — left rail mark */}
-      <span
-        className={`absolute left-0 top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r-full bg-red transition-opacity ${
-          active ? "opacity-100" : "opacity-0"
-        }`}
-      />
-      <span
-        className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
-          active ? "bg-red/10" : "group-hover:bg-[var(--panel-2)]"
-        }`}
-      >
-        {icon}
-      </span>
-      <span className="mono text-[8px] tracking-[.2em]">{num}</span>
-
-      {/* tooltip — flyout label, doesn't cover canvas, unique per-tool identity */}
+      {icon}
+      {/* tooltip */}
       <span
         className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap
           rounded border border-line bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text)]
@@ -114,6 +136,41 @@ function RailButton({
       >
         {label}
       </span>
+    </button>
+  );
+}
+
+// ─── Home card — the big quick-select cards shown when no tool is active ──
+
+function HomeCard({
+  num,
+  label,
+  desc,
+  icon,
+  onClick,
+}: {
+  num: string;
+  label: string;
+  desc: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex flex-col items-start gap-4 rounded-xl border border-line bg-[var(--panel-2)] p-5 text-left
+        transition-all hover:-translate-y-0.5 hover:border-red hover:shadow-[0_8px_28px_rgba(208,0,0,0.18)]"
+    >
+      <div className="flex w-full items-center justify-between">
+        <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-line text-muted transition-colors group-hover:border-red/50 group-hover:text-red">
+          {icon}
+        </span>
+        <span className="mono text-[10px] tracking-[.2em] text-muted/60 group-hover:text-red/70">{num}</span>
+      </div>
+      <div>
+        <h3 className="text-[15px] font-semibold tracking-tight text-[var(--text)]">{label}</h3>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{desc}</p>
+      </div>
     </button>
   );
 }
@@ -126,29 +183,37 @@ export default function Home() {
   const clearImage = useStore((s) => s.clearImage);
   const hydrateLibrary = useStore((s) => s.hydrateLibrary);
   const [batchOpen, setBatchOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>("ponto");
+  const [tab, setTab] = useState<Tab | null>(null);
 
   useEffect(() => {
     hydrateLibrary();
   }, [hydrateLibrary]);
 
-  const activeTab = TABS.find((t) => t.id === tab)!;
+  const activeTab = TABS.find((t) => t.id === tab) ?? null;
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header — brand + current tool + contextual actions, no tab switcher here */}
+      {/* Header — brand + current tool eyebrow + contextual actions */}
       <header className="glass-header flex h-12 shrink-0 items-center justify-between px-4">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => setTab(null)}
+          className="flex items-center gap-3"
+          title="Voltar para o início"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.svg" alt="UPGM" className="h-5 w-auto opacity-90" />
           <span className="mono text-[12px] font-semibold tracking-[.12em] text-[var(--text)]">
             UPGM — LAB
           </span>
-          <span className="h-4 w-px bg-[var(--line)]" />
-          <span className="mono text-[9px] tracking-[.16em] text-red uppercase">
-            {activeTab.num} / {activeTab.label}
-          </span>
-        </div>
+          {activeTab && (
+            <>
+              <span className="h-4 w-px bg-[var(--line)]" />
+              <span className="mono text-[9px] tracking-[.16em] text-red uppercase">
+                {activeTab.num} / {activeTab.label}
+              </span>
+            </>
+          )}
+        </button>
 
         {/* Right actions (ponto only) */}
         <div className="flex items-center gap-2">
@@ -192,23 +257,36 @@ export default function Home() {
 
       {batchOpen && <BatchModal onClose={() => setBatchOpen(false)} />}
 
-      {/* Body — fixed icon rail (the one navigation style for all 4 tools) + active studio */}
+      {/* Body — fixed rail of card-selectors (the one navigation style for
+          all 4 tools, plus Início) + active studio or the home card grid */}
       <div className="flex flex-1 min-h-0">
-        <nav className="flex w-16 shrink-0 flex-col items-center gap-0.5 border-r border-line bg-[var(--panel)] py-3">
-          {TABS.map(({ id, num, label, icon: Icon }) => (
-            <RailButton
-              key={id}
-              active={tab === id}
-              icon={<Icon />}
-              num={num}
-              label={label}
-              onClick={() => setTab(id)}
-            />
+        <nav className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 border-r border-line bg-[var(--panel)] py-3">
+          <RailCard active={tab === null} icon={<IconHome />} label="Início" onClick={() => setTab(null)} />
+          <span className="my-1 h-px w-8 bg-line" />
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <RailCard key={id} active={tab === id} icon={<Icon />} label={label} onClick={() => setTab(id)} />
           ))}
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {tab === "particulas" ? (
+          {tab === null ? (
+            <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
+              <div className="w-full max-w-2xl">
+                <div className="mb-8 text-center">
+                  <p className="mono text-[10px] uppercase tracking-[.22em] text-red mb-3">UPGM — LAB</p>
+                  <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Escolha uma ferramenta</h1>
+                  <p className="mt-2 text-sm text-muted">
+                    Quatro estúdios visuais — clique num card ou use o atalho na barra lateral.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {TABS.map(({ id, num, label, desc, icon: Icon }) => (
+                    <HomeCard key={id} num={num} label={label} desc={desc} icon={<Icon />} onClick={() => setTab(id)} />
+                  ))}
+                </div>
+              </div>
+            </main>
+          ) : tab === "particulas" ? (
             <ParticleStudio />
           ) : tab === "tracker" ? (
             <TrackerStudio />
