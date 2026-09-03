@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PanelSection, PanelSlider as Slider, SegmentedRow, Toggle as KitToggle, PresetGrid } from "@/components/ui/panel";
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -406,6 +407,7 @@ function animValue(tn: number, P: Params, dur: number): number {
 export default function ParticleStudio() {
   const [P, setP] = useState<Params>({ ...DEFAULTS });
   const [pcount, setPcount] = useState(0);
+  const [hasImage, setHasImage] = useState(false);
   const [morphOn, setMorphOn] = useState(false);
   const [morphSlots, setMorphSlots] = useState<MorphSlot[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -578,7 +580,7 @@ export default function ParticleStudio() {
     const reader = new FileReader();
     reader.onload = ev => {
       const img = new Image();
-      img.onload = () => { sourceImgRef.current = img; resampleImage(); setExpStatus("Imagem carregada."); };
+      img.onload = () => { sourceImgRef.current = img; setHasImage(true); resampleImage(); setExpStatus("Imagem carregada."); };
       img.src = ev.target!.result as string;
     };
     reader.readAsDataURL(file);
@@ -845,36 +847,8 @@ export default function ParticleStudio() {
   const tpFrac = totalDur > 0 ? timeVal / totalDur : 0;
   const isPlaying = playing;
 
-  const Slider = ({ label, id, min, max, step, value, fmt, onChange }: {
-    label: string; id?: string; min: number; max: number; step?: number;
-    value: number; fmt?: (v: number) => string | number; onChange: (v: number) => void;
-  }) => (
-    <div className="mb-3">
-      <div className="flex justify-between items-baseline mb-1">
-        <label className="text-[12px] text-[var(--text)]">{label}</label>
-        <span className="mono text-[11px] text-red">{fmt ? fmt(value) : value}</span>
-      </div>
-      <input id={id} type="range" min={min} max={max} step={step ?? 1} value={value}
-        onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-[2px] accent-red cursor-pointer"
-        style={{ appearance: "none", background: `linear-gradient(to right, var(--red) 0%, var(--red) ${((value - min) / (max - min)) * 100}%, var(--line) ${((value - min) / (max - min)) * 100}%, var(--line) 100%)` }}
-      />
-    </div>
-  );
-
-  const SegBtn = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
-    <button onClick={onClick}
-      className={`flex-1 py-1.5 text-[10px] mono uppercase transition-all ${active ? "bg-red text-white font-semibold" : "text-muted hover:text-[var(--text)]"}`}>
-      {children}
-    </button>
-  );
-
-  const SectionHead = ({ children }: { children: React.ReactNode }) => (
-    <h3 className="mono text-[10px] uppercase tracking-[.18em] text-muted mb-3 flex items-center gap-2">
-      <span className="inline-block w-1.5 h-1.5 rounded-full bg-red shrink-0" />
-      {children}
-    </h3>
-  );
+  // Slider, SegmentedRow, PanelSection, Toggle come from the shared design
+  // system kit (@/components/ui/panel) — same look as every other studio.
 
   return (
     <div className="flex flex-1 min-h-0">
@@ -907,7 +881,7 @@ export default function ParticleStudio() {
         )}
 
         {/* No image placeholder */}
-        {!sourceImgRef.current && !morphOn && (
+        {!hasImage && !morphOn && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none">
             <div className="text-center">
               <p className="mono text-[11px] tracking-widest text-muted uppercase">UPGM — Partículas</p>
@@ -985,35 +959,23 @@ export default function ParticleStudio() {
           )}
         </div>
 
-        {/* Presets */}
-        <div className="border-b border-line p-4">
-          <SectionHead>Presets</SectionHead>
-          <div className="grid grid-cols-2 gap-1.5">
-            {PRESETS.map(pr => (
-              <button key={pr.name} onClick={() => applyPreset(pr)}
-                className="bg-[var(--panel-2)] border border-line rounded px-2 py-2 text-left text-[11px] hover:border-red/60 hover:text-[var(--text)] transition-all">
-                {pr.name}
-                <span className="block mono text-[9px] text-muted mt-0.5">{pr.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <PanelSection title="Presets">
+          <PresetGrid items={PRESETS} onSelect={applyPreset} />
+        </PanelSection>
 
-        {/* Timeline */}
-        <div className="border-b border-line p-4">
-          <SectionHead>Timeline</SectionHead>
+        <PanelSection title="Timeline">
           <Slider label="Duração" min={1} max={30} step={0.5} value={P.dur} fmt={v => v.toFixed(1) + "s"} onChange={v => setParam("dur", v)} />
-          <div className="mb-3">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Easing</label>
-            <div className="flex border border-line rounded overflow-hidden">
-              {(["linear", "in", "out", "inout"] as Easing[]).map(e => (
-                <SegBtn key={e} active={P.easing === e} onClick={() => { setParam("easing", e); dirtyRef.current = true; }}>{e}</SegBtn>
-              ))}
-            </div>
+            <SegmentedRow
+              value={P.easing}
+              options={(["linear", "in", "out", "inout"] as Easing[]).map(e => ({ value: e, label: e }))}
+              onChange={e => { setParam("easing", e); dirtyRef.current = true; }}
+            />
           </div>
           <Slider label="Movimento em repouso" min={0} max={100} value={P.idle} fmt={Math.round} onChange={v => setParam("idle", v)} />
           <Slider label="Escalonamento" min={0} max={95} value={P.spread} fmt={Math.round} onChange={v => setParam("spread", v)} />
-          <div className="mb-3">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Modo de movimento</label>
             <select value={P.motion} onChange={e => { setParam("motion", e.target.value as Motion); setTimeout(resampleImage, 0); }}
               className="w-full bg-[var(--panel-2)] border border-line text-[var(--text)] mono text-[11px] px-2 py-2 rounded cursor-pointer outline-none">
@@ -1026,40 +988,30 @@ export default function ParticleStudio() {
               <option value="scatter">espalhar aleatório</option>
             </select>
           </div>
-          <div className="flex justify-between items-center mb-3">
-            <label className="text-[12px] text-[var(--text)]">Abrir e fechar na forma original</label>
-            <button onClick={() => setParam("bookend", !P.bookend)}
-              className={`w-9 h-5 rounded-full transition-colors relative ${P.bookend ? "bg-red/25" : "bg-line"}`}>
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${P.bookend ? "left-4 bg-red" : "left-0.5 bg-muted"}`} />
-            </button>
-          </div>
+          <KitToggle label="Abrir e fechar na forma original" value={P.bookend} onChange={v => setParam("bookend", v)} />
           {P.bookend && (
             <>
               <Slider label="Forma original no início" min={0} max={10} step={0.5} value={P.introSec} fmt={v => v.toFixed(1) + "s"} onChange={v => setParam("introSec", v)} />
               <Slider label="Forma original no fim" min={0} max={10} step={0.5} value={P.outroSec} fmt={v => v.toFixed(1) + "s"} onChange={v => setParam("outroSec", v)} />
             </>
           )}
-        </div>
+        </PanelSection>
 
-        {/* Source */}
-        <div className="border-b border-line p-4">
-          <SectionHead>Fonte</SectionHead>
+        <PanelSection title="Fonte">
           <Slider label="Densidade" min={6} max={100} value={P.density} fmt={Math.round} onChange={v => setParam("density", v)} />
           <Slider label="Tamanho" min={0.5} max={7} step={0.1} value={P.size} fmt={v => v.toFixed(1)} onChange={v => setParam("size", v)} />
           <Slider label="Variação de tamanho" min={0} max={100} value={P.sizeVar} fmt={Math.round} onChange={v => setParam("sizeVar", v)} />
-          <div className="mb-3">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Formato da partícula</label>
-            <div className="flex border border-line rounded overflow-hidden">
-              {(["circle", "square", "diamond", "ring"] as Shape[]).map(s => (
-                <SegBtn key={s} active={P.shape === s} onClick={() => setParam("shape", s)}>{s}</SegBtn>
-              ))}
-            </div>
+            <SegmentedRow
+              value={P.shape}
+              options={(["circle", "square", "diamond", "ring"] as Shape[]).map(s => ({ value: s, label: s }))}
+              onChange={s => setParam("shape", s)}
+            />
           </div>
-        </div>
+        </PanelSection>
 
-        {/* Movement */}
-        <div className="border-b border-line p-4">
-          <SectionHead>Movimento</SectionHead>
+        <PanelSection title="Movimento">
           <Slider label="Dispersão" min={0} max={100} value={P.disp} fmt={Math.round} onChange={v => setParam("disp", v)} />
           <Slider label="Turbulência" min={0} max={100} value={P.turb} fmt={Math.round} onChange={v => setParam("turb", v)} />
           <Slider label="Escala de turbulência" min={1} max={100} value={P.tscale} fmt={Math.round} onChange={v => setParam("tscale", v)} />
@@ -1067,21 +1019,19 @@ export default function ParticleStudio() {
           <Slider label="Gravidade ↓" min={-40} max={40} value={P.grav} fmt={Math.round} onChange={v => setParam("grav", v)} />
           <Slider label="Vento →" min={-40} max={40} value={P.wind} fmt={Math.round} onChange={v => setParam("wind", v)} />
           <Slider label="Foco central" min={0} max={100} value={P.centerBias} fmt={Math.round} onChange={v => setParam("centerBias", v)} />
-        </div>
+        </PanelSection>
 
-        {/* Appearance */}
-        <div className="border-b border-line p-4">
-          <SectionHead>Aparência</SectionHead>
-          <div className="mb-3">
+        <PanelSection title="Aparência">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Cor das partículas</label>
-            <div className="flex border border-line rounded overflow-hidden">
-              {(["original", "white", "custom"] as ColorMode[]).map(c => (
-                <SegBtn key={c} active={P.colorMode === c} onClick={() => setParam("colorMode", c)}>{c}</SegBtn>
-              ))}
-            </div>
+            <SegmentedRow
+              value={P.colorMode}
+              options={(["original", "white", "custom"] as ColorMode[]).map(c => ({ value: c, label: c }))}
+              onChange={c => setParam("colorMode", c)}
+            />
           </div>
           {P.colorMode === "custom" && (
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2">
               <input type="color" value={P.customColor} onChange={e => setParam("customColor", e.target.value)}
                 className="w-8 h-7 border border-line rounded cursor-pointer bg-none p-0.5" />
               <span className="mono text-[10px] text-muted">{P.customColor}</span>
@@ -1090,13 +1040,7 @@ export default function ParticleStudio() {
           <Slider label="Opacidade" min={0} max={100} value={P.opacity} fmt={Math.round} onChange={v => setParam("opacity", v)} />
           <Slider label="Fade" min={0} max={100} value={P.fade} fmt={Math.round} onChange={v => setParam("fade", v)} />
           <Slider label="Rastro" min={0} max={95} value={P.trail} fmt={Math.round} onChange={v => setParam("trail", v)} />
-          <div className="flex justify-between items-center mb-3">
-            <label className="text-[12px] text-[var(--text)]">Brilho (glow)</label>
-            <button onClick={() => setParam("glow", !P.glow)}
-              className={`w-9 h-5 rounded-full transition-colors relative ${P.glow ? "bg-red/25" : "bg-line"}`}>
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${P.glow ? "left-4 bg-red" : "left-0.5 bg-muted"}`} />
-            </button>
-          </div>
+          <KitToggle label="Brilho (glow)" value={P.glow} onChange={v => setParam("glow", v)} />
           {P.glow && <Slider label="Intensidade do brilho" min={0} max={100} value={P.glowAmt} fmt={Math.round} onChange={v => setParam("glowAmt", v)} />}
           <div className="flex items-center gap-2">
             <label className="text-[12px] text-[var(--text)]">Fundo</label>
@@ -1104,12 +1048,11 @@ export default function ParticleStudio() {
               className="w-8 h-7 border border-line rounded cursor-pointer bg-none p-0.5" />
             <span className="mono text-[10px] text-muted">{P.bg}</span>
           </div>
-        </div>
+        </PanelSection>
 
-        {/* Morph */}
-        <div className="border-b border-line p-4">
-          <div className="flex justify-between items-center mb-3">
-            <SectionHead>Morph (opcional)</SectionHead>
+        <PanelSection
+          title="Morph (opcional)"
+          headerRight={
             <button onClick={() => {
               const next = !morphOn;
               setMorphOn(next);
@@ -1126,10 +1069,11 @@ export default function ParticleStudio() {
               }
               dirtyRef.current = true;
             }}
-              className={`w-9 h-5 rounded-full transition-colors relative ${morphOn ? "bg-red/25" : "bg-line"}`}>
+              className={`w-9 h-5 rounded-full transition-colors relative shrink-0 ${morphOn ? "bg-red/25" : "bg-line"}`}>
               <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${morphOn ? "left-4 bg-red" : "left-0.5 bg-muted"}`} />
             </button>
-          </div>
+          }
+        >
           {morphOn && (
             <>
               <div className="flex flex-col gap-1.5 mb-3">
@@ -1174,34 +1118,32 @@ export default function ParticleStudio() {
                 onChange={e => { const f = e.target.files?.[0]; if (f) addMorphSlot(f); e.target.value = ""; }} />
             </>
           )}
-        </div>
+        </PanelSection>
 
-        {/* Export */}
-        <div className="border-b border-line p-4">
-          <SectionHead>Exportar</SectionHead>
-          <div className="mb-3">
+        <PanelSection title="Exportar">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Formato</label>
-            <div className="flex border border-line rounded overflow-hidden">
-              {(["landscape", "portrait", "square"] as ExFormat[]).map(f => (
-                <SegBtn key={f} active={P.exFormat === f} onClick={() => setParam("exFormat", f)}>{f === "landscape" ? "16:9" : f === "portrait" ? "9:16" : "1:1"}</SegBtn>
-              ))}
-            </div>
+            <SegmentedRow
+              value={P.exFormat}
+              options={(["landscape", "portrait", "square"] as ExFormat[]).map(f => ({ value: f, label: f === "landscape" ? "16:9" : f === "portrait" ? "9:16" : "1:1" }))}
+              onChange={f => setParam("exFormat", f)}
+            />
           </div>
-          <div className="mb-3">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Qualidade</label>
-            <div className="flex border border-line rounded overflow-hidden">
-              {[1080, 1440, 2160].map(q => (
-                <SegBtn key={q} active={P.exQuality === q} onClick={() => setParam("exQuality", q as Params["exQuality"])}>{q}p</SegBtn>
-              ))}
-            </div>
+            <SegmentedRow
+              value={String(P.exQuality)}
+              options={[1080, 1440, 2160].map(q => ({ value: String(q), label: `${q}p` }))}
+              onChange={q => setParam("exQuality", Number(q) as Params["exQuality"])}
+            />
           </div>
-          <div className="mb-3">
+          <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">FPS</label>
-            <div className="flex border border-line rounded overflow-hidden">
-              {[24, 30, 60].map(f => (
-                <SegBtn key={f} active={P.fps === f} onClick={() => setParam("fps", f as Params["fps"])}>{f}</SegBtn>
-              ))}
-            </div>
+            <SegmentedRow
+              value={String(P.fps)}
+              options={[24, 30, 60].map(f => ({ value: String(f), label: String(f) }))}
+              onChange={f => setParam("fps", Number(f) as Params["fps"])}
+            />
           </div>
           <div className="flex gap-2">
             <button onClick={() => exportVideo("mp4")} disabled={recording}
@@ -1217,11 +1159,9 @@ export default function ParticleStudio() {
               PNG
             </button>
           </div>
-        </div>
+        </PanelSection>
 
-        {/* Actions */}
-        <div className="p-4">
-          <SectionHead>Ações</SectionHead>
+        <PanelSection title="Ações" className="border-b-0">
           <div className="flex gap-2">
             <button onClick={() => {
               const motions: Motion[] = ["inplace", "rise", "fall", "drift", "radial", "swirl"];
@@ -1255,7 +1195,7 @@ export default function ParticleStudio() {
           <p className="mt-3 mono text-[10px] text-muted leading-relaxed">
             espaço = play/pause · arraste um PNG direto no canvas
           </p>
-        </div>
+        </PanelSection>
       </aside>
     </div>
   );

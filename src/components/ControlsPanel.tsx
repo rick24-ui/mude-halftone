@@ -3,78 +3,12 @@
 import { useState } from "react";
 import { useStore } from "@/store/useStore";
 import Slider from "./Slider";
+import { PanelSection as Section, SegmentedRow as Segmented, Toggle, ColorField } from "@/components/ui/panel";
 import { PRESETS, RED, INK, PAPER } from "@/lib/types";
 import { sampleDots } from "@/lib/engine";
 import { exportPNG, exportSVG, exportPDF, copyPNGToClipboard, exportGIF, exportVideo } from "@/lib/export";
 
-// ---------- pequenos blocos de UI ----------
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-t border-white/5 px-4 py-4">
-      <h3 className="label mb-3 text-[var(--text)]">{title}</h3>
-      <div className="space-y-3">{children}</div>
-    </section>
-  );
-}
-
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-1 rounded-md bg-[var(--panel-2)] p-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className={`flex-1 rounded px-2 py-1.5 text-[11px] transition-colors ${
-            value === o.value ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button onClick={() => onChange(!value)} className="flex w-full items-center justify-between py-1">
-      <span className="label">{label}</span>
-      <span className={`relative h-4 w-7 rounded-full transition-colors ${value ? "bg-red" : "bg-[var(--line)]"}`}>
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${value ? "translate-x-3.5" : "translate-x-0.5"}`}
-        />
-      </span>
-    </button>
-  );
-}
-
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="label">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="mono text-[11px] uppercase text-muted">{value}</span>
-        <label className="h-6 w-6 cursor-pointer rounded border border-line" style={{ background: value }}>
-          <input
-            type="color"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="h-full w-full cursor-pointer opacity-0"
-          />
-        </label>
-      </div>
-    </div>
-  );
-}
+// ---------- pequenos blocos de UI (locais a este painel) ----------
 
 const SWATCHES = [RED, INK, "#FFFFFF", PAPER, "#7A0A1F", "#1f6feb"];
 

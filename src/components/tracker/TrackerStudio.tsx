@@ -23,6 +23,7 @@ import {
   BOX_STYLES,
 } from "@/lib/tracker";
 import { downloadBlob, timestampName } from "@/lib/export";
+import { PanelSection as Section, Toggle, SegmentedGrid } from "@/components/ui/panel";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -234,31 +235,8 @@ const inputCls =
   "w-full rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red";
 
 // ─── Sub-components ───────────────────────────────────────────────────────
-
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="label">{label}</span>
-      <button
-        onClick={() => onChange(!value)}
-        className={`relative h-5 w-9 rounded-full transition-colors ${value ? "bg-red" : "bg-[var(--line)]"}`}
-      >
-        <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${value ? "left-4" : "left-0.5"}`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
-      <p className="label mb-3">{title}</p>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
+// Toggle and Section (PanelSection) come from the shared design-system kit
+// at @/components/ui/panel — same look as every other studio's sidebar.
 
 // ─── Main Component ───────────────────────────────────────────────────────
 
@@ -883,128 +861,166 @@ export default function TrackerStudio() {
   const busy = status === "loading-model" || status === "detecting";
 
   return (
-    <main
-      className="relative flex-1 overflow-hidden bg-ink"
-      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
-    >
-      {/* ── Ambient background — blurred reflection behind the glass panels ─ */}
-      <div className="absolute inset-0 overflow-hidden">
-        {imgSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imgSrc} alt="" className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
-        ) : videoSrc ? (
-          <video src={videoSrc} muted loop autoPlay playsInline className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
-        ) : (
-          <div className="ambient-glow h-full w-full" />
-        )}
-        <div className="absolute inset-0 bg-ink/55" />
-      </div>
-
-      {/* ── Centered media stage ─────────────────────────────────────────── */}
-      <div className="absolute inset-0 flex items-center justify-center pl-[332px] pr-[312px] pt-24 pb-24">
-        {!imgSrc && !videoSrc ? (
-          <div
-            className={`flex flex-col items-center gap-5 rounded-xl border-2 border-dashed p-20 text-center transition-colors ${
-              dragging ? "border-red bg-red/5" : "border-line"
-            }`}
-          >
-            <div className="space-y-1">
-              <p className="text-sm font-semibold tracking-tight text-[var(--text)]">
-                Arraste uma imagem ou vídeo com pessoa
-              </p>
-              <p className="text-[11px] text-muted">
-                PNG, JPG, WEBP — ou MP4/WEBM de até {MAX_VIDEO_DURATION}s. O modelo IA detecta o corpo automaticamente
-              </p>
-            </div>
-            <button
-              onClick={() => inputRef.current?.click()}
-              className="rounded bg-red px-5 py-2 text-xs font-semibold text-white hover:opacity-90"
-            >
-              Selecionar arquivo
-            </button>
+    <main className="flex flex-1 min-h-0">
+      {/* ── Canvas column ─────────────────────────────────────────────────── */}
+      <div
+        className="relative flex flex-1 min-w-0 flex-col overflow-hidden bg-ink"
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+      >
+        {/* In-flow toolbar — brand, track mode, media action (no floating dock) */}
+        <div className="glass-header flex h-14 shrink-0 items-center gap-4 px-5">
+          <span className="mono shrink-0 text-[11px] font-bold tracking-tight text-[var(--text)]">RC · TRACKER</span>
+          <div className="h-5 w-px shrink-0 bg-line" />
+          <div className="flex flex-1 items-center gap-1.5">
+            {TRACK_MODES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setTrackMode(m.id)}
+                title={m.hint}
+                className={`rounded-full px-4 py-1.5 text-[11px] font-medium transition-colors ${
+                  trackMode === m.id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
-        ) : (
-          <>
-            {mediaType === "video" && (
-              <video
-                ref={videoRef}
-                src={videoSrc ?? undefined}
-                onLoadedMetadata={handleVideoLoaded}
-                muted
-                playsInline
-                className="hidden"
-              />
+          <span className="label shrink-0">
+            {!imgSrc && !videoSrc ? "Sem mídia" : mediaType === "video" ? "Vídeo" : "Imagem"}
+          </span>
+          <button
+            onClick={() => inputRef.current?.click()}
+            className="shrink-0 rounded border border-line px-3 py-1 mono text-[10px] uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors"
+          >
+            {(imgSrc || videoSrc) ? "Trocar mídia" : "Carregar mídia"}
+          </button>
+          <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
+        </div>
+
+        {/* Stage */}
+        <div className="relative flex-1 overflow-hidden">
+          {/* ── Ambient background — blurred reflection behind the media ─── */}
+          <div className="absolute inset-0 overflow-hidden">
+            {imgSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={imgSrc} alt="" className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
+            ) : videoSrc ? (
+              <video src={videoSrc} muted loop autoPlay playsInline className="h-full w-full scale-110 object-cover opacity-50 blur-3xl" />
+            ) : (
+              <div className="ambient-glow h-full w-full" />
             )}
-            <canvas
-              ref={canvasRef}
-              onMouseDown={handlePointerDown}
-              onMouseMove={handlePointerMove}
-              onMouseUp={handlePointerUp}
-              onMouseLeave={handlePointerUp}
-              title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
-              className={`max-h-full max-w-full rounded-2xl shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
+            <div className="absolute inset-0 bg-ink/55" />
+          </div>
+
+          {/* ── Centered media stage ───────────────────────────────────── */}
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            {!imgSrc && !videoSrc ? (
+              <div
+                className={`flex flex-col items-center gap-5 rounded-xl border-2 border-dashed p-20 text-center transition-colors ${
+                  dragging ? "border-red bg-red/5" : "border-line"
+                }`}
+              >
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold tracking-tight text-[var(--text)]">
+                    Arraste uma imagem ou vídeo com pessoa
+                  </p>
+                  <p className="text-[11px] text-muted">
+                    PNG, JPG, WEBP — ou MP4/WEBM de até {MAX_VIDEO_DURATION}s. O modelo IA detecta o corpo automaticamente
+                  </p>
+                </div>
+                <button
+                  onClick={() => inputRef.current?.click()}
+                  className="rounded bg-red px-5 py-2 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  Selecionar arquivo
+                </button>
+              </div>
+            ) : (
+              <>
+                {mediaType === "video" && (
+                  <video
+                    ref={videoRef}
+                    src={videoSrc ?? undefined}
+                    onLoadedMetadata={handleVideoLoaded}
+                    muted
+                    playsInline
+                    className="hidden"
+                  />
+                )}
+                <canvas
+                  ref={canvasRef}
+                  onMouseDown={handlePointerDown}
+                  onMouseMove={handlePointerMove}
+                  onMouseUp={handlePointerUp}
+                  onMouseLeave={handlePointerUp}
+                  title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
+                  className={`max-h-full max-w-full rounded-2xl shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
+                />
+              </>
+            )}
+          </div>
+
+          {/* Drag overlay */}
+          {(imgSrc || videoSrc) && dragging && (
+            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-2 border-dashed border-red bg-red/10">
+              <p className="rounded-full bg-[var(--ink)]/80 px-4 py-2 text-sm font-semibold text-red">Soltar para trocar mídia</p>
+            </div>
+          )}
+
+          {/* Status badge */}
+          {(busy || exportingVideo) && (
+            <div className="glass absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-full px-4 py-2 text-[11px] text-[var(--text)]">
+              {exportingVideo
+                ? "Exportando vídeo…"
+                : status === "loading-model"
+                ? "Carregando modelo IA…"
+                : "Detectando pontos…"}
+            </div>
+          )}
+        </div>
+
+        {/* In-flow bottom player bar — video playback only */}
+        {mediaType === "video" && videoDuration > 0 && (
+          <div className="flex h-14 shrink-0 items-center gap-3 border-t border-line px-4">
+            <button
+              onClick={togglePlay}
+              aria-label={playing ? "Pausar" : "Tocar"}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red text-white hover:opacity-90"
+            >
+              {playing ? (
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+                  <rect x="1" y="0" width="3.5" height="12" />
+                  <rect x="7.5" y="0" width="3.5" height="12" />
+                </svg>
+              ) : (
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+                  <path d="M1 0 11 6 1 12Z" />
+                </svg>
+              )}
+            </button>
+            <input
+              className="rng flex-1"
+              type="range" min={0} max={videoDuration} step={0.01}
+              value={Math.min(currentTime, videoDuration)}
+              onChange={(e) => handleSeek(parseFloat(e.target.value))}
             />
-          </>
+            {videoTruncated && (
+              <span className="mono shrink-0 rounded-full bg-red/20 px-2 py-0.5 text-[10px] text-red">
+                MAX {MAX_VIDEO_DURATION}s
+              </span>
+            )}
+            <span className="mono shrink-0 text-[11px] text-muted">
+              {formatTime(currentTime)} / {formatTime(videoDuration)}
+            </span>
+          </div>
         )}
       </div>
 
-      {/* Drag overlay */}
-      {(imgSrc || videoSrc) && dragging && (
-        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-2 border-dashed border-red bg-red/10">
-          <p className="rounded-full bg-[var(--ink)]/80 px-4 py-2 text-sm font-semibold text-red">Soltar para trocar mídia</p>
-        </div>
-      )}
-
-      {/* Status badge */}
-      {(busy || exportingVideo) && (
-        <div className="glass absolute left-1/2 top-24 z-30 -translate-x-1/2 rounded-full px-4 py-2 text-[11px] text-[var(--text)]">
-          {exportingVideo
-            ? "Exportando vídeo…"
-            : status === "loading-model"
-            ? "Carregando modelo IA…"
-            : "Detectando pontos…"}
-        </div>
-      )}
-
-      {/* ── Top bar — brand + track mode ─────────────────────────────────── */}
-      <div className="glass absolute left-[332px] right-[202px] top-4 z-20 flex h-14 items-center gap-4 rounded-full px-5">
-        <span className="mono shrink-0 text-[11px] font-bold tracking-tight text-[var(--text)]">RC · TRACKER</span>
-        <div className="h-5 w-px shrink-0 bg-white/10" />
-        <div className="flex flex-1 items-center justify-center gap-1.5">
-          {TRACK_MODES.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setTrackMode(m.id)}
-              title={m.hint}
-              className={`rounded-full px-4 py-1.5 text-[11px] font-medium transition-colors ${
-                trackMode === m.id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <span className="label shrink-0">
-          {!imgSrc && !videoSrc ? "Sem mídia" : mediaType === "video" ? "Vídeo" : "Imagem"}
-        </span>
-      </div>
-
-      {/* ── Top-right pill — media actions ───────────────────────────────── */}
-      <div className="glass absolute right-4 top-4 z-20 flex h-14 w-[170px] items-center justify-center rounded-full">
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="flex h-full w-full items-center justify-center gap-2 rounded-full px-4 text-[11px] font-medium text-[var(--text)] transition-colors hover:bg-white/10"
-        >
-          {(imgSrc || videoSrc) ? "Trocar mídia" : "Carregar mídia"}
-        </button>
-      </div>
-      <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile} />
-
-      {/* ── Left panel — controls ─────────────────────────────────────────── */}
-      <aside className="glass absolute bottom-4 left-4 top-4 z-20 flex w-[300px] flex-col overflow-hidden rounded-2xl">
-        <div className="thin-scroll flex-1 overflow-y-auto p-4 space-y-4">
+      {/* ── Right sidebar — fixed, same shell as every other studio ────────── */}
+      <aside className="glass-sidebar flex w-[320px] shrink-0 flex-col overflow-hidden">
+        <div className="thin-scroll flex-1 overflow-y-auto">
 
           {/* Detection behavior */}
           <Section title="Detecção">
@@ -1063,41 +1079,31 @@ export default function TrackerStudio() {
 
           {/* Visual style — Standard vs DEUSTUDIO oval overlay */}
           <Section title="Estilo visual">
-            <div className="grid grid-cols-2 gap-1.5">
-              {([
-                { id: "standard", label: "Padrão" },
-                { id: "deustudio", label: "DEUSTUDIO" },
-              ] as { id: VisualStyle; label: string }[]).map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setVisualStyle(id);
-                    // Preset recommended settings when switching to DEUSTUDIO
-                    if (id === "deustudio") {
-                      setOpts((o) => ({
-                        ...o,
-                        dotRadius: 6,       // 3 concentric rings
-                        boxJitter: 0.45,    // moderate satellite cloud
-                        connections: true,
-                        connectionDensity: 0.55,
-                        showLabels: true,
-                        showCoords: true,
-                        showKeypoints: false,
-                        showSkeleton: false,
-                        showBoxes: false,
-                      }));
-                    }
-                  }}
-                  className={`rounded border px-2 py-2 text-[11px] font-medium tracking-wide transition-colors ${
-                    visualStyle === id
-                      ? "border-red bg-red/10 text-[var(--text)]"
-                      : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <SegmentedGrid
+              value={visualStyle}
+              options={[
+                { value: "standard", label: "Padrão" },
+                { value: "deustudio", label: "DEUSTUDIO" },
+              ] satisfies { value: VisualStyle; label: string }[]}
+              onChange={(id) => {
+                setVisualStyle(id);
+                // Preset recommended settings when switching to DEUSTUDIO
+                if (id === "deustudio") {
+                  setOpts((o) => ({
+                    ...o,
+                    dotRadius: 6,       // 3 concentric rings
+                    boxJitter: 0.45,    // moderate satellite cloud
+                    connections: true,
+                    connectionDensity: 0.55,
+                    showLabels: true,
+                    showCoords: true,
+                    showKeypoints: false,
+                    showSkeleton: false,
+                    showBoxes: false,
+                  }));
+                }
+              }}
+            />
             {visualStyle === "deustudio" && (
               <div className="space-y-1 rounded bg-[var(--panel-2)] px-2.5 py-2">
                 <p className="text-[10px] font-medium text-[var(--text)]">Mapeamento dos controles</p>
@@ -1217,40 +1223,21 @@ export default function TrackerStudio() {
           <Section title="Estilo do tracking">
             <div>
               <span className="label mb-1.5 block">Forma dos pontos</span>
-              <div className="grid grid-cols-3 gap-1.5">
-                {MARKER_STYLES.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => set("markerStyle", m.id)}
-                    className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
-                      opts.markerStyle === m.id
-                        ? "border-red bg-red/10 text-[var(--text)]"
-                        : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedGrid
+                columns={3}
+                value={opts.markerStyle}
+                options={MARKER_STYLES.map((m) => ({ value: m.id, label: m.label }))}
+                onChange={(v) => set("markerStyle", v)}
+              />
             </div>
             <Toggle label="Glow nos pontos" value={opts.dotGlow} onChange={(v) => set("dotGlow", v)} />
             <div>
               <span className="label mb-1.5 block">Forma dos quadros</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                {BOX_STYLES.map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() => set("boxStyle", b.id)}
-                    className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
-                      opts.boxStyle === b.id
-                        ? "border-red bg-red/10 text-[var(--text)]"
-                        : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
-                    }`}
-                  >
-                    {b.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedGrid
+                value={opts.boxStyle}
+                options={BOX_STYLES.map((b) => ({ value: b.id, label: b.label }))}
+                onChange={(v) => set("boxStyle", v)}
+              />
             </div>
           </Section>
 
@@ -1333,21 +1320,11 @@ export default function TrackerStudio() {
 
           {/* Creative filters */}
           <Section title="Filtro de imagem">
-            <div className="grid grid-cols-2 gap-1.5">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => set("filter", f.id)}
-                  className={`rounded border px-2 py-1.5 text-[11px] transition-colors ${
-                    opts.filter === f.id
-                      ? "border-red bg-red/10 text-[var(--text)]"
-                      : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedGrid
+              value={opts.filter}
+              options={FILTERS.map((f) => ({ value: f.id, label: f.label }))}
+              onChange={(v) => set("filter", v)}
+            />
           </Section>
 
           {/* Per-region / per-inset effect overrides */}
@@ -1391,10 +1368,54 @@ export default function TrackerStudio() {
             <Toggle label="Vignette" value={opts.vignette} onChange={(v) => set("vignette", v)} />
           </Section>
 
+          {/* History / layers — folded into the single sidebar (was a floating panel) */}
+          <Section
+            title="Histórico"
+            className="border-b-0"
+            headerRight={
+              history.length > 0 && (
+                <button
+                  onClick={() => setHistory([])}
+                  className="text-[10px] text-muted hover:text-[var(--text)]"
+                >
+                  Limpar
+                </button>
+              )
+            }
+          >
+            {history.length === 0 ? (
+              <p className="text-[11px] leading-relaxed text-muted">
+                As alterações de estilo aparecem aqui como camadas. Clique numa camada para voltar a esse ponto.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {history.map((h, i) => (
+                  <button
+                    key={h.id}
+                    onClick={() => restoreHistory(h)}
+                    style={{
+                      background: `linear-gradient(135deg, ${hexToRgba(h.color, 0.16)}, rgba(255,255,255,0.02))`,
+                      opacity: Math.max(0.5, 1 - i * 0.05),
+                    }}
+                    className="block w-full rounded-lg border border-white/10 px-3 py-2 text-left transition-opacity hover:border-white/20 hover:opacity-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: h.color, boxShadow: `0 0 8px ${h.color}` }}
+                      />
+                      <span className="flex-1 truncate text-[11px] text-[var(--text)]">{h.label}</span>
+                    </div>
+                    <p className="mono mt-1 text-[10px] text-muted">{h.time}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Section>
         </div>
 
         {/* Footer */}
-        <div className="border-t border-white/10 px-4 py-4 space-y-2">
+        <div className="border-t border-line px-4 py-4 space-y-2">
           {status === "no-person" && (
             <p className="text-center text-[11px] text-red">
               {trackMode === "person" ? "Nenhuma pessoa detectada" : "Nenhum ponto detectado"}
@@ -1445,87 +1466,6 @@ export default function TrackerStudio() {
           )}
         </div>
       </aside>
-
-      {/* Bottom player bar — video playback */}
-      {mediaType === "video" && videoDuration > 0 && (
-        <div className="glass absolute bottom-4 left-[332px] right-[312px] z-20 flex h-14 items-center gap-3 rounded-full px-4">
-          <button
-            onClick={togglePlay}
-            aria-label={playing ? "Pausar" : "Tocar"}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red text-white hover:opacity-90"
-          >
-            {playing ? (
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
-                <rect x="1" y="0" width="3.5" height="12" />
-                <rect x="7.5" y="0" width="3.5" height="12" />
-              </svg>
-            ) : (
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M1 0 11 6 1 12Z" />
-              </svg>
-            )}
-          </button>
-          <input
-            className="rng flex-1"
-            type="range" min={0} max={videoDuration} step={0.01}
-            value={Math.min(currentTime, videoDuration)}
-            onChange={(e) => handleSeek(parseFloat(e.target.value))}
-          />
-          {videoTruncated && (
-            <span className="mono shrink-0 rounded-full bg-red/20 px-2 py-0.5 text-[10px] text-red">
-              MAX {MAX_VIDEO_DURATION}s
-            </span>
-          )}
-          <span className="mono shrink-0 text-[11px] text-muted">
-            {formatTime(currentTime)} / {formatTime(videoDuration)}
-          </span>
-        </div>
-      )}
-
-      {/* History / layers panel */}
-      <div className="glass absolute bottom-4 right-4 z-20 flex max-h-[50vh] w-[280px] flex-col overflow-hidden rounded-2xl">
-        <div className="flex items-center justify-between px-4 pb-2 pt-3">
-          <p className="label">Histórico</p>
-          {history.length > 0 && (
-            <button
-              onClick={() => setHistory([])}
-              className="text-[10px] text-muted hover:text-[var(--text)]"
-            >
-              Limpar
-            </button>
-          )}
-        </div>
-        <div className="thin-scroll flex-1 overflow-y-auto px-3 pb-3">
-          {history.length === 0 ? (
-            <p className="px-1 py-2 text-[11px] leading-relaxed text-muted">
-              As alterações de estilo aparecem aqui como camadas. Clique numa camada para voltar a esse ponto.
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {history.map((h, i) => (
-                <button
-                  key={h.id}
-                  onClick={() => restoreHistory(h)}
-                  style={{
-                    background: `linear-gradient(135deg, ${hexToRgba(h.color, 0.16)}, rgba(255,255,255,0.02))`,
-                    opacity: Math.max(0.5, 1 - i * 0.05),
-                  }}
-                  className="block w-full rounded-lg border border-white/10 px-3 py-2 text-left transition-opacity hover:border-white/20 hover:opacity-100"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: h.color, boxShadow: `0 0 8px ${h.color}` }}
-                    />
-                    <span className="flex-1 truncate text-[11px] text-[var(--text)]">{h.label}</span>
-                  </div>
-                  <p className="mono mt-1 text-[10px] text-muted">{h.time}</p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
     </main>
   );
 }
