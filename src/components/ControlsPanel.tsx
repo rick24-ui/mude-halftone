@@ -60,16 +60,16 @@ export default function ControlsPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Presets */}
-      <div className="px-4 py-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="label text-[var(--text)]">Presets</h3>
+      <Section
+        title="Presets"
+        headerRight={
           <button onClick={reset} className="label hover:text-red">
             Reset
           </button>
-        </div>
+        }
+      >
         <PresetGrid items={PRESETS} isActive={(preset) => presetId === preset.id} onSelect={applyPreset} />
-      </div>
+      </Section>
 
       <div className="thin-scroll flex-1 overflow-y-auto">
         {/* Grade / distribuição */}

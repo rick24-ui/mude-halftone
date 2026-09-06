@@ -1,5 +1,7 @@
 "use client";
 
+import { PanelSlider } from "@/components/ui/panel";
+
 interface SliderProps {
   label: string;
   value: number;
@@ -10,25 +12,9 @@ interface SliderProps {
   onChange: (v: number) => void;
 }
 
-export default function Slider({ label, value, min, max, step = 1, unit = "", onChange }: SliderProps) {
-  return (
-    <label className="block select-none">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="label">{label}</span>
-        <span className="mono text-[11px] text-[var(--text)]">
-          {Number.isInteger(step) ? value : value.toFixed(step < 0.1 ? 2 : 1)}
-          {unit}
-        </span>
-      </div>
-      <input
-        className="rng"
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-      />
-    </label>
-  );
+// Thin forward to the shared kit — kept as a separate import path so
+// Pontilhismo/Texto don't need to change their imports, but the actual
+// rendering (and look) is the exact same component every studio uses.
+export default function Slider(props: SliderProps) {
+  return <PanelSlider {...props} />;
 }

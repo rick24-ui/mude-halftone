@@ -884,8 +884,9 @@ export default function ParticleStudio() {
         {!hasImage && !morphOn && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none">
             <div className="text-center">
-              <p className="mono text-[11px] tracking-widest text-muted uppercase">UPGM — Partículas</p>
-              <p className="mt-2 text-[13px] text-muted max-w-xs text-center">
+              <p className="mono text-[10px] uppercase tracking-[.22em] text-muted mb-2">04 / Partículas</p>
+              <p className="text-lg font-bold tracking-tight text-[var(--text)]">Nenhuma imagem carregada</p>
+              <p className="mt-1 text-[13px] text-muted max-w-xs text-center mx-auto">
                 Carregue um PNG com transparência para gerar a nuvem de partículas. Use os presets para explorar os modos.
               </p>
             </div>
@@ -939,7 +940,8 @@ export default function ParticleStudio() {
       </div>
 
       {/* Sidebar */}
-      <aside className="glass-sidebar flex w-[310px] shrink-0 flex-col overflow-y-auto">
+      <aside className="glass-sidebar flex w-[320px] shrink-0 flex-col overflow-hidden">
+       <div className="thin-scroll flex-1 overflow-y-auto">
         {/* Load image */}
         <div className="border-b border-line p-4">
           <button onClick={() => fileInputRef.current?.click()}
@@ -965,7 +967,7 @@ export default function ParticleStudio() {
         <PanelSection title="Timeline">
           <Slider label="Duração" min={1} max={30} step={0.5} value={P.dur} fmt={v => v.toFixed(1) + "s"} onChange={v => setParam("dur", v)} />
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">Easing</label>
+            <label className="label mb-1 block">Easing</label>
             <SegmentedRow
               value={P.easing}
               options={(["linear", "in", "out", "inout"] as Easing[]).map(e => ({ value: e, label: e }))}
@@ -975,7 +977,7 @@ export default function ParticleStudio() {
           <Slider label="Movimento em repouso" min={0} max={100} value={P.idle} fmt={Math.round} onChange={v => setParam("idle", v)} />
           <Slider label="Escalonamento" min={0} max={95} value={P.spread} fmt={Math.round} onChange={v => setParam("spread", v)} />
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">Modo de movimento</label>
+            <label className="label mb-1 block">Modo de movimento</label>
             <select value={P.motion} onChange={e => { setParam("motion", e.target.value as Motion); setTimeout(resampleImage, 0); }}
               className="w-full bg-white/[0.03] border border-line text-[var(--text)] mono text-[11px] px-2 py-2 rounded-lg cursor-pointer outline-none">
               <option value="inplace">dissolver no lugar</option>
@@ -1001,7 +1003,7 @@ export default function ParticleStudio() {
           <Slider label="Tamanho" min={0.5} max={7} step={0.1} value={P.size} fmt={v => v.toFixed(1)} onChange={v => setParam("size", v)} />
           <Slider label="Variação de tamanho" min={0} max={100} value={P.sizeVar} fmt={Math.round} onChange={v => setParam("sizeVar", v)} />
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">Formato da partícula</label>
+            <label className="label mb-1 block">Formato da partícula</label>
             <SegmentedRow
               value={P.shape}
               options={(["circle", "square", "diamond", "ring"] as Shape[]).map(s => ({ value: s, label: s }))}
@@ -1022,7 +1024,7 @@ export default function ParticleStudio() {
 
         <PanelSection title="Aparência">
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">Cor das partículas</label>
+            <label className="label mb-1 block">Cor das partículas</label>
             <SegmentedRow
               value={P.colorMode}
               options={(["original", "white", "custom"] as ColorMode[]).map(c => ({ value: c, label: c }))}
@@ -1042,7 +1044,7 @@ export default function ParticleStudio() {
           <KitToggle label="Brilho (glow)" value={P.glow} onChange={v => setParam("glow", v)} />
           {P.glow && <Slider label="Intensidade do brilho" min={0} max={100} value={P.glowAmt} fmt={Math.round} onChange={v => setParam("glowAmt", v)} />}
           <div className="flex items-center gap-2">
-            <label className="text-[12px] text-[var(--text)]">Fundo</label>
+            <label className="label">Fundo</label>
             <input type="color" value={P.bg} onChange={e => setParam("bg", e.target.value)}
               className="w-8 h-7 border border-line rounded cursor-pointer bg-none p-0.5" />
             <span className="mono text-[10px] text-muted">{P.bg}</span>
@@ -1121,7 +1123,7 @@ export default function ParticleStudio() {
 
         <PanelSection title="Exportar">
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">Formato</label>
+            <label className="label mb-1 block">Formato</label>
             <SegmentedRow
               value={P.exFormat}
               options={(["landscape", "portrait", "square"] as ExFormat[]).map(f => ({ value: f, label: f === "landscape" ? "16:9" : f === "portrait" ? "9:16" : "1:1" }))}
@@ -1129,7 +1131,7 @@ export default function ParticleStudio() {
             />
           </div>
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">Qualidade</label>
+            <label className="label mb-1 block">Qualidade</label>
             <SegmentedRow
               value={String(P.exQuality)}
               options={[1080, 1440, 2160].map(q => ({ value: String(q), label: `${q}p` }))}
@@ -1137,26 +1139,12 @@ export default function ParticleStudio() {
             />
           </div>
           <div>
-            <label className="text-[12px] text-[var(--text)] mb-1 block">FPS</label>
+            <label className="label mb-1 block">FPS</label>
             <SegmentedRow
               value={String(P.fps)}
               options={[24, 30, 60].map(f => ({ value: String(f), label: String(f) }))}
               onChange={f => setParam("fps", Number(f) as Params["fps"])}
             />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => exportVideo("mp4")} disabled={recording}
-              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
-              MP4
-            </button>
-            <button onClick={() => exportVideo("webm")} disabled={recording}
-              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
-              WebM
-            </button>
-            <button onClick={exportPNG} disabled={recording}
-              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
-              PNG
-            </button>
           </div>
         </PanelSection>
 
@@ -1195,6 +1183,26 @@ export default function ParticleStudio() {
             espaço = play/pause · arraste um PNG direto no canvas
           </p>
         </PanelSection>
+       </div>
+
+        {/* Export actions — pinned footer, same shell as every other studio */}
+        <div className="border-t border-line bg-white/[0.02] px-4 py-4">
+          <h3 className="label mb-2 text-[var(--text)]">Exportar</h3>
+          <div className="flex gap-2">
+            <button onClick={() => exportVideo("mp4")} disabled={recording}
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
+              MP4
+            </button>
+            <button onClick={() => exportVideo("webm")} disabled={recording}
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
+              WebM
+            </button>
+            <button onClick={exportPNG} disabled={recording}
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
+              PNG
+            </button>
+          </div>
+        </div>
       </aside>
     </div>
   );

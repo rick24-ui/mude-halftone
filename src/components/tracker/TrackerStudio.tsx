@@ -23,7 +23,7 @@ import {
   BOX_STYLES,
 } from "@/lib/tracker";
 import { downloadBlob, timestampName } from "@/lib/export";
-import { PanelSection as Section, Toggle, SegmentedGrid } from "@/components/ui/panel";
+import { PanelSection as Section, Toggle, SegmentedGrid, PanelSlider as Slider } from "@/components/ui/panel";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -870,7 +870,7 @@ export default function TrackerStudio() {
         onDrop={handleDrop}
       >
         {/* In-flow toolbar — brand, track mode, media action (no floating dock) */}
-        <div className="glass-header flex h-14 shrink-0 items-center gap-4 px-5">
+        <div className="glass-header flex h-12 shrink-0 items-center gap-4 px-5">
           <span className="mono shrink-0 text-[11px] font-bold tracking-tight text-[var(--text)]">RC · TRACKER</span>
           <div className="h-5 w-px shrink-0 bg-line" />
           <div className="flex flex-1 items-center gap-1.5">
@@ -923,10 +923,11 @@ export default function TrackerStudio() {
                 }`}
               >
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold tracking-tight text-[var(--text)]">
+                  <p className="mono text-[10px] uppercase tracking-[.22em] text-muted mb-2">03 / Tracker</p>
+                  <p className="text-lg font-bold tracking-tight text-[var(--text)]">
                     Arraste uma imagem ou vídeo com pessoa
                   </p>
-                  <p className="text-[11px] text-muted">
+                  <p className="mt-1 max-w-sm text-[13px] text-muted">
                     PNG, JPG, WEBP — ou MP4/WEBM de até {MAX_VIDEO_DURATION}s. O modelo IA detecta o corpo automaticamente
                   </p>
                 </div>
@@ -1039,40 +1040,31 @@ export default function TrackerStudio() {
 
             {mediaType === "video" && (
               <>
-                <label className="block">
-                  <div className="mb-1 flex justify-between">
-                    <span className="label">Velocidade de troca</span>
-                    <span className="mono text-[11px] text-[var(--text)]">{Math.round(trackSpeed * 100)}%</span>
-                  </div>
-                  <input
-                    className="rng w-full"
-                    type="range"
-                    min={TRACK_SPEED_RANGE.min} max={TRACK_SPEED_RANGE.max} step={0.01}
+                <div>
+                  <Slider
+                    label="Velocidade de troca"
                     value={trackSpeed}
-                    onChange={(e) => setTrackSpeed(parseFloat(e.target.value))}
+                    min={TRACK_SPEED_RANGE.min} max={TRACK_SPEED_RANGE.max} step={0.01}
+                    fmt={(v) => `${Math.round(v * 100)}%`}
+                    onChange={setTrackSpeed}
                   />
                   <p className="mt-1 text-[10px] leading-snug text-muted">
                     Quão rápido o tracking acompanha a nova posição — baixo fica suave/fluido, alto fica mais ágil.
                   </p>
-                </label>
-                <label className="block">
-                  <div className="mb-1 flex justify-between">
-                    <span className="label">Densidade</span>
-                    <span className="mono text-[11px] text-[var(--text)]">{trackDensity}</span>
-                  </div>
-                  <input
-                    className="rng w-full"
-                    type="range"
-                    min={TRACK_DENSITY_RANGE.min} max={TRACK_DENSITY_RANGE.max} step={1}
+                </div>
+                <div>
+                  <Slider
+                    label="Densidade"
                     value={trackDensity}
-                    onChange={(e) => setTrackDensity(parseInt(e.target.value))}
+                    min={TRACK_DENSITY_RANGE.min} max={TRACK_DENSITY_RANGE.max} step={1}
+                    onChange={(v) => setTrackDensity(Math.round(v))}
                   />
                   <p className="mt-1 text-[10px] leading-snug text-muted">
                     {trackMode === "environment"
                       ? "Quantos pontos de ambiente são rastreados e com que frequência a posição é atualizada."
                       : "Com que frequência a posição é re-analisada durante a reprodução."}
                   </p>
-                </label>
+                </div>
               </>
             )}
           </Section>
@@ -1241,49 +1233,36 @@ export default function TrackerStudio() {
 
           {/* Line style */}
           <Section title="Espessura">
-            <label className="block">
-              <div className="mb-1 flex justify-between">
-                <span className="label">Linha</span>
-                <span className="mono text-[11px] text-[var(--text)]">{opts.lineWidth.toFixed(1)}px</span>
-              </div>
-              <input
-                className="rng w-full"
-                type="range" min={0.5} max={3} step={0.1}
-                value={opts.lineWidth}
-                onChange={(e) => set("lineWidth", parseFloat(e.target.value))}
-              />
-            </label>
-            <label className="block">
-              <div className="mb-1 flex justify-between">
-                <span className="label">Ponto</span>
-                <span className="mono text-[11px] text-[var(--text)]">{opts.dotRadius}px</span>
-              </div>
-              <input
-                className="rng w-full"
-                type="range" min={2} max={10} step={1}
-                value={opts.dotRadius}
-                onChange={(e) => set("dotRadius", parseInt(e.target.value))}
-              />
-            </label>
+            <Slider
+              label="Linha"
+              value={opts.lineWidth}
+              min={0.5} max={3} step={0.1}
+              fmt={(v) => `${v.toFixed(1)}px`}
+              onChange={(v) => set("lineWidth", v)}
+            />
+            <Slider
+              label="Ponto"
+              value={opts.dotRadius}
+              min={2} max={10} step={1}
+              fmt={(v) => `${v}px`}
+              onChange={(v) => set("dotRadius", Math.round(v))}
+            />
           </Section>
 
           {/* Random / dynamic boxes */}
           <Section title="Dinâmica">
-            <label className="block">
-              <div className="mb-1 flex justify-between">
-                <span className="label">Aleatoriedade dos quadros</span>
-                <span className="mono text-[11px] text-[var(--text)]">{Math.round(opts.boxJitter * 100)}%</span>
-              </div>
-              <input
-                className="rng w-full"
-                type="range" min={0} max={1} step={0.05}
+            <div>
+              <Slider
+                label="Aleatoriedade dos quadros"
                 value={opts.boxJitter}
-                onChange={(e) => set("boxJitter", parseFloat(e.target.value))}
+                min={0} max={1} step={0.05}
+                fmt={(v) => `${Math.round(v * 100)}%`}
+                onChange={(v) => set("boxJitter", v)}
               />
               <p className="mt-1 text-[10px] leading-snug text-muted">
                 Faz os quadrados de tracking variarem de posição, tamanho e ângulo — deixa a composição mais dinâmica.
               </p>
-            </label>
+            </div>
             <button
               onClick={() => setShuffleTick((t) => t + 1)}
               disabled={!points.length}
@@ -1297,18 +1276,13 @@ export default function TrackerStudio() {
           <Section title="Rede de conexões">
             <Toggle label="Conectar pontos" value={opts.connections} onChange={(v) => set("connections", v)} />
             {opts.connections && (
-              <label className="block">
-                <div className="mb-1 flex justify-between">
-                  <span className="label">Densidade da rede</span>
-                  <span className="mono text-[11px] text-[var(--text)]">{Math.round(opts.connectionDensity * 100)}%</span>
-                </div>
-                <input
-                  className="rng w-full"
-                  type="range" min={0} max={1} step={0.05}
-                  value={opts.connectionDensity}
-                  onChange={(e) => set("connectionDensity", parseFloat(e.target.value))}
-                />
-              </label>
+              <Slider
+                label="Densidade da rede"
+                value={opts.connectionDensity}
+                min={0} max={1} step={0.05}
+                fmt={(v) => `${Math.round(v * 100)}%`}
+                onChange={(v) => set("connectionDensity", v)}
+              />
             )}
             {opts.connections && (
               <Toggle label="Glow nas linhas" value={opts.connectionGlow} onChange={(v) => set("connectionGlow", v)} />

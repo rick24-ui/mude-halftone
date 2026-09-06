@@ -292,8 +292,8 @@ export default function Home() {
                 <p className="mono text-[10px] uppercase tracking-[.22em] text-muted mb-3">
                   01 / Pontilhismo
                 </p>
-                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">UPGM — Lab</h1>
-                <p className="mt-2 max-w-md text-sm text-muted">
+                <h1 className="text-lg font-bold tracking-tight text-[var(--text)]">Comece com uma imagem</h1>
+                <p className="mt-1 max-w-md text-[13px] text-muted">
                   Faça upload de uma imagem. Ajuste pontos, formas, cores e efeitos. Exporte em SVG ou PNG.
                 </p>
               </div>
