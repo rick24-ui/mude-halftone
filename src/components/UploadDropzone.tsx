@@ -59,7 +59,7 @@ export default function UploadDropzone({ compact = false }: { compact?: boolean 
         onClick={() => inputRef.current?.click()}
         className={`group flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed transition-colors ${
           compact ? "gap-2 p-6" : "gap-4 p-16"
-        } ${drag ? "border-red bg-red/5" : "border-line hover:border-muted"}`}
+        } ${drag ? "border-red/50 bg-red/5" : "border-line hover:border-white/20"}`}
       >
         <div
           className={`flex items-center justify-center rounded-full border border-line text-muted transition-colors group-hover:text-red ${

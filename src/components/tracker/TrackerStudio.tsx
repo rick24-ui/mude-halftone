@@ -232,7 +232,7 @@ const MIN_INSET_SIZE = 0.08;
 const MAX_INSET_SIZE = 0.55;
 
 const inputCls =
-  "w-full rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red";
+  "w-full rounded-lg border border-line bg-white/[0.03] px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-red/40";
 
 // ─── Sub-components ───────────────────────────────────────────────────────
 // Toggle and Section (PanelSection) come from the shared design-system kit
@@ -879,8 +879,8 @@ export default function TrackerStudio() {
                 key={m.id}
                 onClick={() => setTrackMode(m.id)}
                 title={m.hint}
-                className={`rounded-full px-4 py-1.5 text-[11px] font-medium transition-colors ${
-                  trackMode === m.id ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+                className={`rounded-full px-4 py-1.5 text-[11px] font-medium transition-all ${
+                  trackMode === m.id ? "seg-active" : "seg-idle"
                 }`}
               >
                 {m.label}
@@ -892,7 +892,7 @@ export default function TrackerStudio() {
           </span>
           <button
             onClick={() => inputRef.current?.click()}
-            className="shrink-0 rounded border border-line px-3 py-1 mono text-[10px] uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors"
+            className="btn-glass shrink-0 px-3 py-1 mono text-[10px] uppercase tracking-widest"
           >
             {(imgSrc || videoSrc) ? "Trocar mídia" : "Carregar mídia"}
           </button>
@@ -918,8 +918,8 @@ export default function TrackerStudio() {
           <div className="absolute inset-0 flex items-center justify-center p-6">
             {!imgSrc && !videoSrc ? (
               <div
-                className={`flex flex-col items-center gap-5 rounded-xl border-2 border-dashed p-20 text-center transition-colors ${
-                  dragging ? "border-red bg-red/5" : "border-line"
+                className={`flex flex-col items-center gap-5 rounded-2xl border-2 border-dashed p-20 text-center transition-colors ${
+                  dragging ? "border-red/50 bg-red/5" : "border-line"
                 }`}
               >
                 <div className="space-y-1">
@@ -932,7 +932,7 @@ export default function TrackerStudio() {
                 </div>
                 <button
                   onClick={() => inputRef.current?.click()}
-                  className="rounded bg-red px-5 py-2 text-xs font-semibold text-white hover:opacity-90"
+                  className="btn-primary px-5 py-2 text-xs"
                 >
                   Selecionar arquivo
                 </button>
@@ -964,8 +964,8 @@ export default function TrackerStudio() {
 
           {/* Drag overlay */}
           {(imgSrc || videoSrc) && dragging && (
-            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-2 border-dashed border-red bg-red/10">
-              <p className="rounded-full bg-[var(--ink)]/80 px-4 py-2 text-sm font-semibold text-red">Soltar para trocar mídia</p>
+            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-2 border-dashed border-red/50 bg-red/10">
+              <p className="glass rounded-full px-4 py-2 text-sm font-semibold text-red">Soltar para trocar mídia</p>
             </div>
           )}
 
@@ -987,7 +987,7 @@ export default function TrackerStudio() {
             <button
               onClick={togglePlay}
               aria-label={playing ? "Pausar" : "Tocar"}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red text-white hover:opacity-90"
+              className="btn-primary flex h-8 w-8 shrink-0 items-center justify-center"
             >
               {playing ? (
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
@@ -1105,7 +1105,7 @@ export default function TrackerStudio() {
               }}
             />
             {visualStyle === "deustudio" && (
-              <div className="space-y-1 rounded bg-[var(--panel-2)] px-2.5 py-2">
+              <div className="space-y-1 rounded-lg border border-line bg-white/[0.03] px-2.5 py-2">
                 <p className="text-[10px] font-medium text-[var(--text)]">Mapeamento dos controles</p>
                 <p className="text-[9px] leading-relaxed text-muted">
                   <span className="text-[var(--text)]">Ponto 2–10</span> → anéis por segmento (2=1, 10=5)<br/>
@@ -1155,10 +1155,8 @@ export default function TrackerStudio() {
                   key={f.id}
                   onClick={() => set("labelFont", f.family)}
                   style={{ fontFamily: f.family }}
-                  className={`truncate rounded border px-2 py-2 text-[12px] leading-none transition-colors ${
-                    opts.labelFont === f.family
-                      ? "border-red bg-red/10 text-[var(--text)]"
-                      : "border-line text-muted hover:text-[var(--text)]"
+                  className={`truncate rounded-lg px-2 py-2 text-[12px] leading-none transition-all ${
+                    opts.labelFont === f.family ? "opt-active" : "opt-idle"
                   }`}
                 >
                   {f.label}
@@ -1201,7 +1199,7 @@ export default function TrackerStudio() {
               onChange={(v) => set("zoomInset", v)}
             />
             {opts.zoomInset && (
-              <div className="flex items-center justify-between gap-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-line bg-white/[0.03] px-2.5 py-1.5">
                 <span className="text-[10px] leading-snug text-muted">
                   {opts.zoomInsets.length
                     ? `${opts.zoomInsets.length} zoom${opts.zoomInsets.length > 1 ? "s" : ""} — arraste para mover, puxe o canto para redimensionar`
@@ -1210,7 +1208,7 @@ export default function TrackerStudio() {
                 {opts.zoomInsets.length > 0 && (
                   <button
                     onClick={() => set("zoomInsets", [])}
-                    className="shrink-0 rounded border border-line px-2 py-1 text-[10px] text-muted hover:border-muted hover:text-[var(--text)]"
+                    className="btn-glass shrink-0 px-2 py-1 text-[10px]"
                   >
                     Limpar
                   </button>
@@ -1289,7 +1287,7 @@ export default function TrackerStudio() {
             <button
               onClick={() => setShuffleTick((t) => t + 1)}
               disabled={!points.length}
-              className="w-full rounded border border-line py-2 text-[11px] text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+              className="btn-glass w-full py-2 text-[11px]"
             >
               Embaralhar
             </button>
@@ -1428,7 +1426,7 @@ export default function TrackerStudio() {
           <button
             onClick={runDetect}
             disabled={(!imgSrc && !videoSrc) || busy}
-            className="w-full rounded bg-red py-2.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+            className="btn-primary w-full py-2.5 text-xs"
           >
             {status === "loading-model"
               ? "Carregando modelo IA…"
@@ -1440,7 +1438,7 @@ export default function TrackerStudio() {
           {status === "done" && mediaType === "image" && (
             <button
               onClick={exportPNG}
-              className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)]"
+              className="btn-glass w-full py-2.5 text-xs font-medium"
             >
               Exportar PNG
             </button>
@@ -1451,14 +1449,14 @@ export default function TrackerStudio() {
               <button
                 onClick={exportVideoFramePNG}
                 disabled={!points.length}
-                className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+                className="btn-glass w-full py-2.5 text-xs font-medium"
               >
                 Exportar frame (PNG)
               </button>
               <button
                 onClick={exportVideo}
                 disabled={exportingVideo}
-                className="w-full rounded border border-line py-2.5 text-xs font-medium text-muted hover:border-muted hover:text-[var(--text)] disabled:opacity-40"
+                className="btn-glass w-full py-2.5 text-xs font-medium"
               >
                 {exportingVideo ? "Exportando…" : "Exportar vídeo (MP4)"}
               </button>

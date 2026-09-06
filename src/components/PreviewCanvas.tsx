@@ -105,7 +105,7 @@ export default function PreviewCanvas() {
                 e.preventDefault();
                 dragging.current = true;
               }}
-              className="absolute z-20 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full border border-red bg-ink text-red"
+              className="glass absolute z-20 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full text-red"
               style={{ left: `${pos}%`, top: "50%" }}
               aria-label="Arrastar comparação"
             >

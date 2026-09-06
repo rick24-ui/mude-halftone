@@ -66,7 +66,7 @@ export default function TextControls() {
           onChange={(e) => setText(e.target.value)}
           rows={2}
           placeholder="Digite aqui…"
-          className="w-full resize-none rounded bg-[var(--panel-2)] px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-red"
+          className="w-full resize-none rounded-lg border border-line bg-white/[0.03] px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-red/40"
         />
         <p className="label mt-1">Enter = nova linha</p>
       </div>
@@ -82,8 +82,8 @@ export default function TextControls() {
                 if (!f.weights.includes(weight)) setWeight(f.def);
               }}
               style={{ fontFamily: f.family }}
-              className={`truncate rounded border px-2 py-2 text-[15px] leading-none transition-colors ${
-                fontId === f.id ? "border-red bg-red/10 text-[var(--text)]" : "border-line text-muted hover:text-[var(--text)]"
+              className={`truncate rounded-lg px-2 py-2 text-[15px] leading-none transition-all ${
+                fontId === f.id ? "opt-active" : "opt-idle"
               }`}
             >
               {f.label}
@@ -95,13 +95,13 @@ export default function TextControls() {
       {font.weights.length > 1 && (
         <div>
           <span className="label">Peso</span>
-          <div className="mt-1 flex flex-wrap gap-1 rounded-md bg-[var(--panel-2)] p-1">
+          <div className="mt-1 flex flex-wrap gap-1 rounded-full border border-line bg-white/[0.03] p-1">
             {font.weights.map((w) => (
               <button
                 key={w}
                 onClick={() => setWeight(w)}
-                className={`flex-1 rounded px-2 py-1.5 text-[11px] transition-colors ${
-                  weight === w ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+                className={`flex-1 rounded-full px-2 py-1.5 text-[11px] transition-all ${
+                  weight === w ? "seg-active" : "seg-idle"
                 }`}
               >
                 {WEIGHT_LABEL[w] ?? w}
@@ -116,13 +116,13 @@ export default function TextControls() {
       <Slider label="Entrelinha" value={lineHeight} min={0.7} max={2} step={0.01} onChange={setLineHeight} />
 
       <div className="flex items-center gap-2">
-        <div className="flex flex-1 gap-1 rounded-md bg-[var(--panel-2)] p-1">
+        <div className="flex flex-1 gap-1 rounded-full border border-line bg-white/[0.03] p-1">
           {(["left", "center", "right"] as TextAlign[]).map((a) => (
             <button
               key={a}
               onClick={() => setAlign(a)}
-              className={`flex-1 rounded px-2 py-1.5 text-[11px] transition-colors ${
-                align === a ? "bg-red text-white" : "text-muted hover:text-[var(--text)]"
+              className={`flex-1 rounded-full px-2 py-1.5 text-[11px] transition-all ${
+                align === a ? "seg-active" : "seg-idle"
               }`}
             >
               {a === "left" ? "Esq." : a === "center" ? "Centro" : "Dir."}
@@ -131,9 +131,7 @@ export default function TextControls() {
         </div>
         <button
           onClick={() => setUppercase((u) => !u)}
-          className={`rounded border px-3 py-2 text-[11px] transition-colors ${
-            uppercase ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"
-          }`}
+          className={`btn-glass px-3 py-2 text-[11px] ${uppercase ? "is-active" : ""}`}
         >
           MAIÚS
         </button>

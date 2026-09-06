@@ -121,17 +121,15 @@ function RailCard({
     <button
       onClick={onClick}
       title={label}
-      className={`group relative flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg border transition-all ${
-        active
-          ? "border-red bg-red/10 text-red"
-          : "border-transparent text-muted hover:border-line hover:bg-[var(--panel-2)] hover:text-[var(--text)]"
+      className={`group relative flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl transition-all ${
+        active ? "opt-active" : "border border-transparent text-muted hover:bg-white/[0.05] hover:text-[var(--text)]"
       }`}
     >
       {icon}
       {/* tooltip */}
       <span
         className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap
-          rounded border border-line bg-[var(--panel-2)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text)]
+          glass rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-[var(--text)]
           opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
       >
         {label}
@@ -158,11 +156,11 @@ function HomeCard({
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col items-start gap-4 rounded-xl border border-line bg-[var(--panel-2)] p-5 text-left
-        transition-all hover:-translate-y-0.5 hover:border-red hover:shadow-[0_8px_28px_rgba(208,0,0,0.18)]"
+      className="group glass flex flex-col items-start gap-4 rounded-2xl p-5 text-left
+        transition-all hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_12px_36px_rgba(208,0,0,0.14)]"
     >
       <div className="flex w-full items-center justify-between">
-        <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-line text-muted transition-colors group-hover:border-red/50 group-hover:text-red">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-white/[0.03] text-muted transition-colors group-hover:border-red/40 group-hover:text-red">
           {icon}
         </span>
         <span className="mono text-[10px] tracking-[.2em] text-muted/60 group-hover:text-red/70">{num}</span>
@@ -226,7 +224,7 @@ export default function Home() {
               )}
               <button
                 onClick={() => setBatchOpen(true)}
-                className="rounded border border-line px-3 py-1 mono text-[10px] uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors"
+                className="btn-glass px-3 py-1 mono text-[10px] uppercase tracking-widest"
               >
                 Lote
               </button>
@@ -234,17 +232,13 @@ export default function Home() {
                 <>
                   <button
                     onClick={() => setShowOriginal(!showOriginal)}
-                    className={`rounded border px-3 py-1 mono text-[10px] uppercase tracking-widest transition-colors ${
-                      showOriginal
-                        ? "border-red text-red"
-                        : "border-line text-muted hover:text-[var(--text)]"
-                    }`}
+                    className={`btn-glass px-3 py-1 mono text-[10px] uppercase tracking-widest ${showOriginal ? "is-active" : ""}`}
                   >
                     Comparar
                   </button>
                   <button
                     onClick={clearImage}
-                    className="rounded border border-line px-3 py-1 mono text-[10px] uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors"
+                    className="btn-glass px-3 py-1 mono text-[10px] uppercase tracking-widest"
                   >
                     Nova imagem
                   </button>
@@ -260,7 +254,7 @@ export default function Home() {
       {/* Body — fixed rail of card-selectors (the one navigation style for
           all 4 tools, plus Início) + active studio or the home card grid */}
       <div className="flex flex-1 min-h-0">
-        <nav className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 border-r border-line bg-[var(--panel)] py-3">
+        <nav className="glass-rail flex w-[72px] shrink-0 flex-col items-center gap-1.5 py-3">
           <RailCard active={tab === null} icon={<IconHome />} label="Início" onClick={() => setTab(null)} />
           <span className="my-1 h-px w-8 bg-line" />
           {TABS.map(({ id, label, icon: Icon }) => (

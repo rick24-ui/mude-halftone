@@ -33,9 +33,9 @@ export default function BatchModal({ onClose }: { onClose: () => void }) {
   const busy = progress !== null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-xl border border-line bg-[var(--panel)] p-5"
+        className="glass w-full max-w-md rounded-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -54,7 +54,7 @@ export default function BatchModal({ onClose }: { onClose: () => void }) {
             e.preventDefault();
             addFiles(e.dataTransfer.files);
           }}
-          className="mb-3 cursor-pointer rounded-lg border border-dashed border-line p-6 text-center hover:border-muted"
+          className="mb-3 cursor-pointer rounded-lg border border-dashed border-line p-6 text-center hover:border-white/20"
         >
           <p className="text-xs">
             Arraste imagens ou <span className="text-red">clique para selecionar</span>
@@ -80,7 +80,7 @@ export default function BatchModal({ onClose }: { onClose: () => void }) {
               <button
                 key={f}
                 onClick={() => setFormat(f)}
-                className={`rounded px-2 py-0.5 text-[11px] uppercase ${format === f ? "bg-red text-white" : "bg-[var(--panel-2)] text-muted"}`}
+                className={`rounded-full px-2 py-0.5 text-[11px] uppercase ${format === f ? "seg-active" : "seg-idle bg-white/[0.04]"}`}
               >
                 {f}
               </button>
@@ -93,7 +93,7 @@ export default function BatchModal({ onClose }: { onClose: () => void }) {
                 <button
                   key={s}
                   onClick={() => setScale(s)}
-                  className={`rounded px-2 py-0.5 text-[11px] ${scale === s ? "bg-red text-white" : "bg-[var(--panel-2)] text-muted"}`}
+                  className={`rounded-full px-2 py-0.5 text-[11px] ${scale === s ? "seg-active" : "seg-idle bg-white/[0.04]"}`}
                 >
                   {s}×
                 </button>
@@ -115,13 +115,13 @@ export default function BatchModal({ onClose }: { onClose: () => void }) {
         )}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-line px-3 py-2 text-xs text-muted hover:text-[var(--text)]">
+          <button onClick={onClose} className="btn-glass px-3 py-2 text-xs">
             Cancelar
           </button>
           <button
             onClick={run}
             disabled={!files.length || busy}
-            className="rounded bg-red px-4 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+            className="btn-primary px-4 py-2 text-xs"
           >
             {busy ? "Processando…" : "Gerar ZIP"}
           </button>

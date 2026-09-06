@@ -866,7 +866,7 @@ export default function ParticleStudio() {
         {/* Drop hint */}
         {dragging && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="border border-dashed border-red rounded px-10 py-7 mono text-[12px] tracking-widest text-red bg-red/5">
+            <div className="border border-dashed border-red/50 rounded-xl px-10 py-7 mono text-[12px] tracking-widest text-red bg-red/5">
               solte o PNG aqui
             </div>
           </div>
@@ -874,7 +874,7 @@ export default function ParticleStudio() {
 
         {/* Recording badge */}
         {recording && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[rgba(16,16,18,.92)] border border-red rounded-full px-3 py-1.5 mono text-[11px] text-red tracking-widest">
+          <div className="glass absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full px-3 py-1.5 mono text-[11px] text-red tracking-widest">
             <span className="w-2 h-2 rounded-full bg-red animate-pulse" />
             {expStatus || "renderizando"}
           </div>
@@ -893,15 +893,14 @@ export default function ParticleStudio() {
         )}
 
         {/* Transport bar */}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-2
-          w-[min(680px,calc(100%-32px))] bg-[rgba(16,16,18,.88)] backdrop-blur-md
-          border border-line rounded-lg px-3 py-2">
+        <div className="glass absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-2
+          w-[min(680px,calc(100%-32px))] rounded-full px-3 py-2">
           <button onClick={togglePlay} disabled={recording}
-            className="w-7 h-7 flex items-center justify-center bg-red text-white rounded-full text-[13px] font-bold shrink-0 disabled:opacity-40">
+            className="btn-primary w-7 h-7 flex items-center justify-center text-[13px] shrink-0">
             {isPlaying ? "❚❚" : "▶"}
           </button>
           <button onClick={() => { setPlaying(false); pbRef.current.playing = false; pbRef.current.time = dir > 0 ? 0 : totalDur; dirtyRef.current = true; }} disabled={recording}
-            className="w-7 h-7 flex items-center justify-center border border-line text-muted hover:text-[var(--text)] rounded-md text-[13px] shrink-0 disabled:opacity-40">
+            className="btn-glass w-7 h-7 flex items-center justify-center rounded-full text-[13px] shrink-0">
             ↺
           </button>
           <span className="mono text-[11px] text-muted w-10 text-center shrink-0">{timeVal.toFixed(1)}s</span>
@@ -926,11 +925,11 @@ export default function ParticleStudio() {
           </div>
           <span className="mono text-[11px] text-muted w-10 text-center shrink-0">{totalDur.toFixed(1)}s</span>
           <button onClick={() => { setDir(d => { const nd = -d; pbRef.current.dir = nd; return nd; }); }}
-            className={`w-7 h-7 flex items-center justify-center border rounded-md text-[13px] transition-colors shrink-0 ${dir < 0 ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"}`}>
+            className={`btn-glass w-7 h-7 flex items-center justify-center rounded-full text-[13px] shrink-0 ${dir < 0 ? "is-active" : ""}`}>
             ⇄
           </button>
           <button onClick={() => setLoop(l => { pbRef.current.loop = !l; return !l; })}
-            className={`w-7 h-7 flex items-center justify-center border rounded-md text-[13px] transition-colors shrink-0 ${loop ? "border-red text-red" : "border-line text-muted hover:text-[var(--text)]"}`}>
+            className={`btn-glass w-7 h-7 flex items-center justify-center rounded-full text-[13px] shrink-0 ${loop ? "is-active" : ""}`}>
             ⟳
           </button>
           <span className="mono text-[10px] text-muted shrink-0 whitespace-nowrap">
@@ -944,7 +943,7 @@ export default function ParticleStudio() {
         {/* Load image */}
         <div className="border-b border-line p-4">
           <button onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded border border-line py-2 text-[11px] mono uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors">
+            className="btn-glass w-full py-2 text-[11px] mono uppercase tracking-widest">
             ⤓ carregar PNG
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
@@ -978,7 +977,7 @@ export default function ParticleStudio() {
           <div>
             <label className="text-[12px] text-[var(--text)] mb-1 block">Modo de movimento</label>
             <select value={P.motion} onChange={e => { setParam("motion", e.target.value as Motion); setTimeout(resampleImage, 0); }}
-              className="w-full bg-[var(--panel-2)] border border-line text-[var(--text)] mono text-[11px] px-2 py-2 rounded cursor-pointer outline-none">
+              className="w-full bg-white/[0.03] border border-line text-[var(--text)] mono text-[11px] px-2 py-2 rounded-lg cursor-pointer outline-none">
               <option value="inplace">dissolver no lugar</option>
               <option value="rise">ascender (fumaça)</option>
               <option value="fall">cair (cinzas)</option>
@@ -1033,7 +1032,7 @@ export default function ParticleStudio() {
           {P.colorMode === "custom" && (
             <div className="flex items-center gap-2">
               <input type="color" value={P.customColor} onChange={e => setParam("customColor", e.target.value)}
-                className="w-8 h-7 border border-line rounded cursor-pointer bg-none p-0.5" />
+                className="w-8 h-7 border border-line rounded-lg cursor-pointer bg-none p-0.5" />
               <span className="mono text-[10px] text-muted">{P.customColor}</span>
             </div>
           )}
@@ -1069,8 +1068,8 @@ export default function ParticleStudio() {
               }
               dirtyRef.current = true;
             }}
-              className={`w-9 h-5 rounded-full transition-colors relative shrink-0 ${morphOn ? "bg-red/25" : "bg-line"}`}>
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${morphOn ? "left-4 bg-red" : "left-0.5 bg-muted"}`} />
+              className={`w-9 h-5 rounded-full border transition-colors relative shrink-0 ${morphOn ? "border-red/30 bg-red/[0.08]" : "border-line bg-white/[0.03]"}`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--text)] transition-all ${morphOn ? "left-4 shadow-[0_0_6px_rgba(208,0,0,0.6)]" : "left-0.5 opacity-70"}`} />
             </button>
           }
         >
@@ -1078,7 +1077,7 @@ export default function ParticleStudio() {
             <>
               <div className="flex flex-col gap-1.5 mb-3">
                 {morphSlots.map((sl, idx) => (
-                  <div key={idx} className="bg-[var(--panel-2)] border border-line rounded p-2">
+                  <div key={idx} className="bg-white/[0.03] border border-line rounded-lg p-2">
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="mono text-[10px] text-red w-4">{idx + 1}</span>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1095,14 +1094,14 @@ export default function ParticleStudio() {
                       <label className="mono text-[9px] text-muted uppercase">pausa</label>
                       <input type="number" min="0.1" step="0.1" value={sl.hold}
                         onChange={e => setMorphSlots(prev => { const next = [...prev]; next[idx] = { ...next[idx], hold: parseFloat(e.target.value) || 1 }; morphSlotsRef.current = next; return next; })}
-                        className="w-12 bg-ink border border-line text-[var(--text)] mono text-[11px] px-1.5 py-1 rounded outline-none" />
+                        className="w-12 bg-white/[0.03] border border-line text-[var(--text)] mono text-[11px] px-1.5 py-1 rounded-lg outline-none" />
                       <span className="mono text-[9px] text-muted">s</span>
                       {(idx < morphSlots.length - 1 || (P.bookend && morphSlots.length >= 2)) && (
                         <>
                           <label className="mono text-[9px] text-muted uppercase">{idx === morphSlots.length - 1 ? "volta" : "troca"}</label>
                           <input type="number" min="0.1" step="0.1" value={sl.trans}
                             onChange={e => setMorphSlots(prev => { const next = [...prev]; next[idx] = { ...next[idx], trans: parseFloat(e.target.value) || 1 }; morphSlotsRef.current = next; return next; })}
-                            className="w-12 bg-ink border border-line text-[var(--text)] mono text-[11px] px-1.5 py-1 rounded outline-none" />
+                            className="w-12 bg-white/[0.03] border border-line text-[var(--text)] mono text-[11px] px-1.5 py-1 rounded-lg outline-none" />
                           <span className="mono text-[9px] text-muted">s</span>
                         </>
                       )}
@@ -1111,7 +1110,7 @@ export default function ParticleStudio() {
                 ))}
               </div>
               <button onClick={() => morphFileInputRef.current?.click()} disabled={morphSlots.length >= 5}
-                className="w-full rounded border border-line py-1.5 text-[11px] mono uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors disabled:opacity-40">
+                className="btn-glass w-full py-1.5 text-[11px] mono uppercase tracking-widest">
                 {morphSlots.length >= 5 ? "limite de 5 formas" : "+ adicionar forma"}
               </button>
               <input ref={morphFileInputRef} type="file" accept="image/*" className="hidden"
@@ -1147,15 +1146,15 @@ export default function ParticleStudio() {
           </div>
           <div className="flex gap-2">
             <button onClick={() => exportVideo("mp4")} disabled={recording}
-              className="flex-1 rounded border border-line py-2 text-[11px] mono uppercase tracking-widest text-muted hover:border-red hover:text-red transition-colors disabled:opacity-40">
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
               MP4
             </button>
             <button onClick={() => exportVideo("webm")} disabled={recording}
-              className="flex-1 rounded border border-line py-2 text-[11px] mono uppercase tracking-widest text-muted hover:border-red hover:text-red transition-colors disabled:opacity-40">
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
               WebM
             </button>
             <button onClick={exportPNG} disabled={recording}
-              className="flex-1 rounded border border-line py-2 text-[11px] mono uppercase tracking-widest text-muted hover:border-red hover:text-red transition-colors disabled:opacity-40">
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
               PNG
             </button>
           </div>
@@ -1178,7 +1177,7 @@ export default function ParticleStudio() {
               pbRef.current.dir = 1; pbRef.current.time = 0; pbRef.current.playing = true;
               setDir(1); setPlaying(true); dirtyRef.current = true;
             }}
-              className="flex-1 rounded border border-line py-2 text-[11px] mono uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors">
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
               Aleatorizar
             </button>
             <button onClick={() => {
@@ -1188,7 +1187,7 @@ export default function ParticleStudio() {
               setPlaying(false); pbRef.current.playing = false;
               pbRef.current.time = 0; dirtyRef.current = true;
             }}
-              className="flex-1 rounded border border-line py-2 text-[11px] mono uppercase tracking-widest text-muted hover:border-muted hover:text-[var(--text)] transition-colors">
+              className="btn-glass flex-1 py-2 text-[11px] mono uppercase tracking-widest">
               Resetar
             </button>
           </div>

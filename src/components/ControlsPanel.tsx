@@ -144,14 +144,14 @@ export default function ControlsPanel() {
                 <button
                   onClick={() => runAnim("gif")}
                   disabled={!source || !!anim}
-                  className="rounded bg-[var(--panel-2)] py-2.5 text-xs font-medium hover:bg-[var(--line)] disabled:opacity-40"
+                  className="btn-glass py-2.5 text-xs font-medium"
                 >
                   {anim?.kind === "gif" ? `GIF ${Math.round((anim.done / anim.total) * 100)}%` : "Exportar GIF"}
                 </button>
                 <button
                   onClick={() => runAnim("mp4")}
                   disabled={!source || !!anim}
-                  className="rounded bg-[var(--panel-2)] py-2.5 text-xs font-medium hover:bg-[var(--line)] disabled:opacity-40"
+                  className="btn-glass py-2.5 text-xs font-medium"
                 >
                   {anim?.kind === "mp4" ? `MP4 ${Math.round((anim.done / anim.total) * 100)}%` : "Exportar MP4"}
                 </button>
@@ -240,14 +240,14 @@ export default function ControlsPanel() {
               value={styleName}
               onChange={(e) => setStyleName(e.target.value)}
               placeholder="Nome do estilo"
-              className="min-w-0 flex-1 rounded bg-[var(--panel-2)] px-2 py-1.5 text-[12px] outline-none placeholder:text-muted focus:ring-1 focus:ring-red"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-white/[0.03] px-2 py-1.5 text-[12px] outline-none placeholder:text-muted focus:ring-1 focus:ring-red/40"
             />
             <button
               onClick={() => {
                 saveStyle(styleName);
                 setStyleName("");
               }}
-              className="rounded bg-red px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90"
+              className="btn-primary px-3 py-1.5 text-[11px]"
             >
               Salvar
             </button>
@@ -285,7 +285,7 @@ export default function ControlsPanel() {
       </div>
 
       {/* Export */}
-      <div className="border-t border-white/5 bg-[var(--panel)] px-4 py-4">
+      <div className="border-t border-line bg-white/[0.02] px-4 py-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="label text-[var(--text)]">Exportar</h3>
           <div className="flex gap-1">
@@ -293,7 +293,7 @@ export default function ControlsPanel() {
               <button
                 key={s}
                 onClick={() => setScale(s)}
-                className={`rounded px-2 py-0.5 text-[11px] ${scale === s ? "bg-red text-white" : "bg-[var(--panel-2)] text-muted"}`}
+                className={`rounded-full px-2 py-0.5 text-[11px] ${scale === s ? "seg-active" : "seg-idle bg-white/[0.04]"}`}
               >
                 {s}×
               </button>
@@ -304,21 +304,21 @@ export default function ControlsPanel() {
           <button
             onClick={() => runExport("png")}
             disabled={!source}
-            className="rounded bg-[var(--panel-2)] py-2.5 text-xs font-medium hover:bg-[var(--line)] disabled:opacity-40"
+            className="btn-glass py-2.5 text-xs font-medium"
           >
             PNG
           </button>
           <button
             onClick={() => runExport("svg")}
             disabled={!source}
-            className="rounded bg-[var(--panel-2)] py-2.5 text-xs font-medium hover:bg-[var(--line)] disabled:opacity-40"
+            className="btn-glass py-2.5 text-xs font-medium"
           >
             SVG
           </button>
           <button
             onClick={() => runExport("pdf")}
             disabled={!source}
-            className="rounded bg-[var(--panel-2)] py-2.5 text-xs font-medium hover:bg-[var(--line)] disabled:opacity-40"
+            className="btn-glass py-2.5 text-xs font-medium"
           >
             PDF
           </button>
@@ -326,7 +326,7 @@ export default function ControlsPanel() {
         <button
           onClick={() => runExport("copy")}
           disabled={!source}
-          className="mt-2 w-full rounded bg-red py-2.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+          className="btn-primary mt-2 w-full py-2.5 text-xs disabled:opacity-40"
         >
           {copied ? "Copiado!" : "Copiar PNG"}
         </button>

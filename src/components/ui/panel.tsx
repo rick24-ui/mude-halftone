@@ -23,7 +23,7 @@ export function PanelSection({
     <section className={`border-b border-line px-4 py-4 last:border-b-0 ${className}`}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="mono flex items-center gap-2 text-[10px] uppercase tracking-[.18em] text-muted">
-          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red" />
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red shadow-[0_0_6px_rgba(208,0,0,0.7)]" />
           {title}
         </h3>
         {headerRight}
@@ -41,10 +41,14 @@ export function Toggle({ label, value, onChange }: { label: string; value: boole
       <button
         type="button"
         onClick={() => onChange(!value)}
-        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${value ? "bg-red/25" : "bg-[var(--line)]"}`}
+        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
+          value ? "border-red/30 bg-red/[0.08]" : "border-line bg-white/[0.03]"
+        }`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${value ? "left-4 bg-red" : "left-0.5 bg-muted"}`}
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--text)] transition-all ${
+            value ? "left-4 shadow-[0_0_6px_rgba(208,0,0,0.6)]" : "left-0.5 opacity-70"
+          }`}
         />
       </button>
     </div>
@@ -63,14 +67,14 @@ export function SegmentedRow<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex overflow-hidden rounded border border-line">
+    <div className="flex overflow-hidden rounded-full border border-line">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
           className={`flex-1 py-1.5 text-[10px] mono uppercase tracking-wide transition-all ${
-            value === o.value ? "bg-red text-white font-semibold" : "text-muted hover:text-[var(--text)]"
+            value === o.value ? "seg-active font-semibold" : "seg-idle"
           }`}
         >
           {o.label}
@@ -101,10 +105,8 @@ export function SegmentedGrid<T extends string>({
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`truncate rounded border px-2 py-1.5 text-[11px] transition-colors ${
-            value === o.value
-              ? "border-red bg-red/10 text-[var(--text)]"
-              : "border-line text-muted hover:border-muted hover:text-[var(--text)]"
+          className={`truncate rounded-lg px-2 py-1.5 text-[11px] transition-all ${
+            value === o.value ? "opt-active" : "opt-idle"
           }`}
         >
           {o.label}
@@ -194,10 +196,8 @@ export function PresetGrid<T extends { name: string; desc?: string }>({
           key={i}
           type="button"
           onClick={() => onSelect(item)}
-          className={`rounded border px-2 py-2 text-left text-[11px] transition-all ${
-            isActive?.(item)
-              ? "border-red bg-red/10 text-[var(--text)]"
-              : "border-line bg-[var(--panel-2)] text-muted hover:border-red/60 hover:text-[var(--text)]"
+          className={`rounded-lg px-2 py-2 text-left text-[11px] transition-all ${
+            isActive?.(item) ? "opt-active" : "opt-idle"
           }`}
         >
           {item.name}
