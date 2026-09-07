@@ -309,26 +309,39 @@ function renderCells(
   h: number,
   scale: number
 ) {
-  const off = document.createElement("canvas");
-  off.width = Math.max(1, Math.round(w));
-  off.height = Math.max(1, Math.round(h));
-  const o = off.getContext("2d", { willReadFrequently: true })!;
-  o.filter = `blur(${Math.max(0.01, p.elasticity * scale)}px)`;
-  for (const d of dots) {
-    o.fillStyle = d.color;
-    o.strokeStyle = d.color;
-    drawShape(o, d.x * scale, d.y * scale, d.r * scale * 1.15, p.shape, p.rotation);
-  }
-  o.filter = "none";
+  const W = Math.max(1, Math.round(w));
+  const H = Math.max(1, Math.round(h));
 
-  const img = o.getImageData(0, 0, off.width, off.height);
+  // 1) draw every shape fully opaque, no blur yet — this is the raw silhouette
+  const shapes = document.createElement("canvas");
+  shapes.width = W;
+  shapes.height = H;
+  const sctx = shapes.getContext("2d", { willReadFrequently: true })!;
+  for (const d of dots) {
+    sctx.fillStyle = d.color;
+    sctx.strokeStyle = d.color;
+    drawShape(sctx, d.x * scale, d.y * scale, d.r * scale * 1.15, p.shape, p.rotation);
+  }
+
+  // 2) blur the composited silhouette ONCE (not per-dot) — this is what actually
+  // lets nearby dots melt into each other instead of each one fading out alone
+  const blurred = document.createElement("canvas");
+  blurred.width = W;
+  blurred.height = H;
+  const bctx = blurred.getContext("2d", { willReadFrequently: true })!;
+  bctx.filter = `blur(${Math.max(0.01, p.elasticity * scale)}px)`;
+  bctx.drawImage(shapes, 0, 0);
+  bctx.filter = "none";
+
+  // 3) threshold the blurred alpha back to hard edges (metaball cutoff)
+  const img = bctx.getImageData(0, 0, W, H);
   const px = img.data;
-  const T = 150;
+  const T = 100;
   for (let i = 3; i < px.length; i += 4) {
     px[i] = px[i] >= T ? 255 : 0;
   }
-  o.putImageData(img, 0, 0);
-  ctx.drawImage(off, 0, 0);
+  bctx.putImageData(img, 0, 0);
+  ctx.drawImage(blurred, 0, 0);
 }
 
 // ----------------------------------------------------------------------------

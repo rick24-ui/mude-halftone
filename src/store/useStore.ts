@@ -69,7 +69,7 @@ export const useStore = create<AppState>((set) => ({
     set((s) => ({ params: { ...s.params, ...patch }, presetId: null })),
 
   applyPreset: (preset) =>
-    set((s) => ({ params: { ...s.params, ...preset.params }, presetId: preset.id })),
+    set(() => ({ params: { ...DEFAULT_PARAMS, ...preset.params }, presetId: preset.id })),
 
   setImage: (img, fileName) =>
     set({ image: img, source: imageToSource(img), fileName }),
