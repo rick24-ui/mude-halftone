@@ -9,8 +9,9 @@ import BatchModal from "@/components/BatchModal";
 import TextStudio from "@/components/text/TextStudio";
 import TrackerStudio from "@/components/tracker/TrackerStudio";
 import ParticleStudio from "@/components/particle/ParticleStudio";
+import BlobStudio from "@/components/blob/BlobStudio";
 
-type Tab = "ponto" | "texto" | "tracker" | "particulas";
+type Tab = "ponto" | "texto" | "tracker" | "particulas" | "fusao";
 
 // ─── Icons — minimal line/dot marks, one per functionality, shared by the
 // rail cards and the home cards so the whole app reads as one icon set ────
@@ -72,6 +73,15 @@ function IconParticles() {
   );
 }
 
+function IconFusion() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 18 18" fill="currentColor">
+      <circle cx="6.5" cy="7" r="4.7" />
+      <circle cx="12.2" cy="10.8" r="3.3" />
+    </svg>
+  );
+}
+
 const TABS: { id: Tab; num: string; label: string; desc: string; icon: () => React.ReactNode }[] = [
   {
     id: "ponto",
@@ -100,6 +110,13 @@ const TABS: { id: Tab; num: string; label: string; desc: string; icon: () => Rea
     label: "Partículas",
     desc: "Motor de partículas com morph, timeline e exportação em vídeo.",
     icon: IconParticles,
+  },
+  {
+    id: "fusao",
+    num: "05",
+    label: "Fusão",
+    desc: "Pontos que se conectam e se fundem em blobs orgânicos, com movimento contínuo.",
+    icon: IconFusion,
   },
 ];
 
@@ -265,21 +282,23 @@ export default function Home() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {tab === null ? (
             <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
-              <div className="w-full max-w-2xl">
+              <div className="w-full max-w-3xl">
                 <div className="mb-8 text-center">
                   <p className="mono text-[10px] uppercase tracking-[.22em] text-red mb-3">UPGM — LAB</p>
                   <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Escolha uma ferramenta</h1>
                   <p className="mt-2 text-sm text-muted">
-                    Quatro estúdios visuais — clique num card ou use o atalho na barra lateral.
+                    Cinco estúdios visuais — clique num card ou use o atalho na barra lateral.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {TABS.map(({ id, num, label, desc, icon: Icon }) => (
                     <HomeCard key={id} num={num} label={label} desc={desc} icon={<Icon />} onClick={() => setTab(id)} />
                   ))}
                 </div>
               </div>
             </main>
+          ) : tab === "fusao" ? (
+            <BlobStudio />
           ) : tab === "particulas" ? (
             <ParticleStudio />
           ) : tab === "tracker" ? (
