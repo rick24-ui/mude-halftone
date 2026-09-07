@@ -2,7 +2,7 @@
 
 export type DotShape = "circle" | "square" | "diamond" | "triangle" | "hexagon" | "ring" | "cross";
 
-export type GridMode = "square" | "hex" | "concentric";
+export type GridMode = "square" | "hex" | "concentric" | "stipple";
 
 export type ConnectionMode = "none" | "cell" | "links";
 
@@ -180,6 +180,16 @@ export const PRESETS: Preset[] = [
       connection: "none", colorMode: "duotone", color1: RED, color2: PAPER,
       background: "solid", bgColor: INK,
       animType: "drift", animAmount: 0.6, animSpeed: 2,
+    },
+  },
+  {
+    id: "estipulado",
+    name: "Estipulado",
+    params: {
+      grid: "stipple", spacing: 6, jitter: 0.15, shape: "circle",
+      minSize: 0.5, maxSize: 3, sizeScale: 1, flow: 0,
+      connection: "none", colorMode: "solid", color1: INK,
+      background: "transparent", thresholdHigh: 250,
     },
   },
 ];

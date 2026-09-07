@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import Slider from "./Slider";
-import { PanelSection as Section, SegmentedRow as Segmented, Toggle, ColorField, PresetGrid } from "@/components/ui/panel";
-import { PRESETS, RED, INK, PAPER } from "@/lib/types";
+import { PanelSection as Section, SegmentedRow as Segmented, SegmentedGrid, Toggle, ColorField, PresetGrid } from "@/components/ui/panel";
+import { PRESETS, RED, INK, PAPER, PointillismParams } from "@/lib/types";
 import { sampleDots } from "@/lib/engine";
 import { exportPNG, exportSVG, exportPDF, copyPNGToClipboard, exportGIF, exportVideo } from "@/lib/export";
 
@@ -12,10 +12,96 @@ import { exportPNG, exportSVG, exportPDF, copyPNGToClipboard, exportGIF, exportV
 
 const SWATCHES = [RED, INK, "#FFFFFF", PAPER, "#7A0A1F", "#1f6feb"];
 
+// ---------- histórico de estilos — mesmo padrão do Tracker ----------
+
+const GRID_LABELS: Record<PointillismParams["grid"], string> = {
+  square: "Quadrada", hex: "Favo", concentric: "Radial", stipple: "Orgânica",
+};
+const SHAPE_LABELS: Record<PointillismParams["shape"], string> = {
+  circle: "Círculo", square: "Quadrado", diamond: "Losango", triangle: "Triângulo",
+  hexagon: "Hexágono", ring: "Anel", cross: "Cruz",
+};
+const CONNECTION_LABELS: Record<PointillismParams["connection"], string> = {
+  none: "Nenhuma", cell: "Células", links: "Rede",
+};
+const COLOR_MODE_LABELS: Record<PointillismParams["colorMode"], string> = {
+  solid: "Sólida", duotone: "Duotone", sample: "Amostra",
+};
+const ANIM_LABELS: Record<PointillismParams["animType"], string> = {
+  none: "Nenhum", pulse: "Pulso", wave: "Onda", drift: "Deriva", orbit: "Órbita", shimmer: "Cintila",
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+interface HistoryEntry {
+  id: number;
+  label: string;
+  color: string;
+  time: string;
+  snapshot: PointillismParams;
+}
+
+interface DiffRule {
+  changed: (a: PointillismParams, b: PointillismParams) => boolean;
+  describe: (b: PointillismParams) => string;
+  debounce?: boolean;
+}
+
+// Regra por campo, na ordem em que devem ser checadas — a primeira diferença
+// encontrada vira o rótulo da entrada. Mudanças discretas (toggles/selects)
+// commitam na hora; sliders são debounced pra não lotar o histórico a cada
+// pixel arrastado.
+const DIFF_RULES: DiffRule[] = [
+  { changed: (a, b) => a.grid !== b.grid, describe: (b) => `Distribuição: ${GRID_LABELS[b.grid]}` },
+  { changed: (a, b) => a.shape !== b.shape, describe: (b) => `Forma: ${SHAPE_LABELS[b.shape]}` },
+  { changed: (a, b) => a.connection !== b.connection, describe: (b) => `Conexão: ${CONNECTION_LABELS[b.connection]}` },
+  { changed: (a, b) => a.colorMode !== b.colorMode, describe: (b) => `Cor: ${COLOR_MODE_LABELS[b.colorMode]}` },
+  { changed: (a, b) => a.animType !== b.animType, describe: (b) => `Animação: ${ANIM_LABELS[b.animType]}` },
+  { changed: (a, b) => a.background !== b.background, describe: (b) => `Fundo: ${b.background === "solid" ? "sólido" : "transparente"}` },
+  { changed: (a, b) => a.color1 !== b.color1, describe: () => "Cor principal alterada" },
+  { changed: (a, b) => a.color2 !== b.color2, describe: () => "Cor secundária alterada" },
+  { changed: (a, b) => a.bgColor !== b.bgColor, describe: () => "Cor de fundo alterada" },
+  { changed: (a, b) => a.hexOffset !== b.hexOffset, describe: (b) => `Linhas alternadas: ${b.hexOffset ? "ativado" : "desativado"}` },
+  { changed: (a, b) => a.invert !== b.invert, describe: (b) => `Inverter: ${b.invert ? "ativado" : "desativado"}` },
+  { changed: (a, b) => a.spacing !== b.spacing, describe: (b) => `Distância: ${b.spacing}px`, debounce: true },
+  { changed: (a, b) => a.jitter !== b.jitter, describe: (b) => `Aleatoriedade: ${Math.round(b.jitter * 100)}%`, debounce: true },
+  { changed: (a, b) => a.minSize !== b.minSize, describe: (b) => `Tamanho mín.: ${b.minSize.toFixed(1)}px`, debounce: true },
+  { changed: (a, b) => a.maxSize !== b.maxSize, describe: (b) => `Tamanho máx.: ${b.maxSize.toFixed(1)}px`, debounce: true },
+  { changed: (a, b) => a.sizeScale !== b.sizeScale, describe: (b) => `Escala global: ${b.sizeScale.toFixed(2)}×`, debounce: true },
+  { changed: (a, b) => a.rotation !== b.rotation, describe: (b) => `Rotação: ${b.rotation}°`, debounce: true },
+  { changed: (a, b) => a.flow !== b.flow, describe: (b) => `Movimento: ${b.flow}px`, debounce: true },
+  { changed: (a, b) => a.flowScale !== b.flowScale, describe: (b) => `Escala do campo: ${b.flowScale.toFixed(1)}`, debounce: true },
+  { changed: (a, b) => a.flowAngle !== b.flowAngle, describe: (b) => `Direção: ${b.flowAngle}°`, debounce: true },
+  { changed: (a, b) => a.wave !== b.wave, describe: (b) => `Ondulação: ${Math.round(b.wave * 100)}%`, debounce: true },
+  { changed: (a, b) => a.elasticity !== b.elasticity, describe: (b) => `Elasticidade: ${b.elasticity.toFixed(1)}`, debounce: true },
+  { changed: (a, b) => a.connectDistance !== b.connectDistance, describe: (b) => `Distância dos links: ${b.connectDistance.toFixed(1)}×`, debounce: true },
+  { changed: (a, b) => a.linkWidth !== b.linkWidth, describe: (b) => `Espessura dos links: ${b.linkWidth.toFixed(1)}px`, debounce: true },
+  { changed: (a, b) => a.brightness !== b.brightness, describe: (b) => `Brilho: ${b.brightness}`, debounce: true },
+  { changed: (a, b) => a.contrast !== b.contrast, describe: (b) => `Contraste: ${b.contrast}`, debounce: true },
+  { changed: (a, b) => a.gamma !== b.gamma, describe: (b) => `Gama: ${b.gamma.toFixed(2)}`, debounce: true },
+  { changed: (a, b) => a.thresholdLow !== b.thresholdLow, describe: (b) => `Limiar baixo: ${b.thresholdLow}`, debounce: true },
+  { changed: (a, b) => a.thresholdHigh !== b.thresholdHigh, describe: (b) => `Limiar alto: ${b.thresholdHigh}`, debounce: true },
+  { changed: (a, b) => a.opacity !== b.opacity, describe: (b) => `Opacidade: ${Math.round(b.opacity * 100)}%`, debounce: true },
+  { changed: (a, b) => a.animAmount !== b.animAmount, describe: (b) => `Intensidade da animação: ${Math.round(b.animAmount * 100)}%`, debounce: true },
+  { changed: (a, b) => a.animSpeed !== b.animSpeed, describe: (b) => `Velocidade da animação: ${b.animSpeed}`, debounce: true },
+];
+
+function describeChange(prev: PointillismParams, next: PointillismParams): { label: string; debounce: boolean } | null {
+  for (const rule of DIFF_RULES) {
+    if (rule.changed(prev, next)) return { label: rule.describe(next), debounce: !!rule.debounce };
+  }
+  return null;
+}
+
 // ---------- painel ----------
 
 export default function ControlsPanel() {
-  const { params, setParam, applyPreset, reset, presetId, source } = useStore();
+  const { params, setParam, setParams, applyPreset, reset, presetId, source } = useStore();
   const library = useStore((s) => s.library);
   const saveStyle = useStore((s) => s.saveStyle);
   const loadStyle = useStore((s) => s.loadStyle);
@@ -25,6 +111,46 @@ export default function ControlsPanel() {
   const [styleName, setStyleName] = useState("");
   const [animDuration, setAnimDuration] = useState(2.5);
   const [anim, setAnim] = useState<{ kind: "gif" | "mp4"; done: number; total: number } | null>(null);
+
+  // Histórico de estilos — cada alteração relevante vira uma camada clicável
+  // para voltar a esse ponto. Mesmo padrão do painel "Histórico" do Tracker.
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const prevSnapRef = useRef<PointillismParams | null>(null);
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restoringRef = useRef(false);
+  const historyIdRef = useRef(0);
+
+  useEffect(() => {
+    const prev = prevSnapRef.current;
+    prevSnapRef.current = params;
+    if (!prev) return;
+    if (restoringRef.current) { restoringRef.current = false; return; }
+
+    const change = describeChange(prev, params);
+    if (!change) return;
+
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(() => {
+      historyIdRef.current += 1;
+      const entry: HistoryEntry = {
+        id: historyIdRef.current,
+        label: change.label,
+        color: params.color1,
+        time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        snapshot: params,
+      };
+      setHistory((h) => [entry, ...h].slice(0, 12));
+    }, change.debounce ? 650 : 0);
+
+    return () => {
+      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    };
+  }, [params]);
+
+  const restoreHistory = useCallback((entry: HistoryEntry) => {
+    restoringRef.current = true;
+    setParams(entry.snapshot);
+  }, [setParams]);
 
   const p = params;
   const set = setParam;
@@ -81,18 +207,32 @@ export default function ControlsPanel() {
               { value: "square", label: "Quadrada" },
               { value: "hex", label: "Favo" },
               { value: "concentric", label: "Radial" },
+              { value: "stipple", label: "Orgânica" },
             ]}
           />
-          <Slider label="Distância" value={p.spacing} min={3} max={40} step={0.5} unit="px" onChange={(v) => set("spacing", v)} />
+          <div>
+            <Slider label="Distância" value={p.spacing} min={3} max={40} step={0.5} unit="px" onChange={(v) => set("spacing", v)} />
+            {p.grid === "stipple" && (
+              <p className="mt-1 text-[10px] leading-snug text-muted">
+                Nesse modo controla a densidade dos pontos, não uma grade fixa.
+              </p>
+            )}
+          </div>
           <Slider label="Aleatoriedade" value={p.jitter} min={0} max={1} step={0.01} onChange={(v) => set("jitter", v)} />
           {p.grid === "square" && (
             <Toggle label="Linhas alternadas" value={p.hexOffset} onChange={(v) => set("hexOffset", v)} />
+          )}
+          {p.grid === "stipple" && (
+            <p className="text-[10px] leading-relaxed text-muted">
+              Distribuição orgânica ponderada pela escuridão da imagem — mais pontos onde é mais escuro, como um pontilhismo feito à mão.
+            </p>
           )}
         </Section>
 
         {/* Ponto */}
         <Section title="Ponto / Forma">
-          <Segmented
+          <SegmentedGrid
+            columns={3}
             value={p.shape}
             onChange={(v) => set("shape", v)}
             options={[
@@ -123,7 +263,8 @@ export default function ControlsPanel() {
 
         {/* Animação */}
         <Section title="Animação (movimento ao vivo)">
-          <Segmented
+          <SegmentedGrid
+            columns={3}
             value={p.animType}
             onChange={(v) => set("animType", v)}
             options={[
@@ -278,6 +419,47 @@ export default function ControlsPanel() {
                     </svg>
                   </button>
                 </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* Histórico — mesmo padrão do painel "Histórico" do Tracker */}
+        <Section
+          title="Histórico"
+          headerRight={
+            history.length > 0 && (
+              <button onClick={() => setHistory([])} className="text-[10px] text-muted hover:text-[var(--text)]">
+                Limpar
+              </button>
+            )
+          }
+        >
+          {history.length === 0 ? (
+            <p className="text-[11px] leading-relaxed text-muted">
+              As alterações de estilo aparecem aqui como camadas. Clique numa camada para voltar a esse ponto.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {history.map((h, i) => (
+                <button
+                  key={h.id}
+                  onClick={() => restoreHistory(h)}
+                  style={{
+                    background: `linear-gradient(135deg, ${hexToRgba(h.color, 0.16)}, rgba(255,255,255,0.02))`,
+                    opacity: Math.max(0.5, 1 - i * 0.05),
+                  }}
+                  className="block w-full rounded-lg border border-white/10 px-3 py-2 text-left transition-opacity hover:border-white/20 hover:opacity-100"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: h.color, boxShadow: `0 0 8px ${h.color}` }}
+                    />
+                    <span className="flex-1 truncate text-[11px] text-[var(--text)]">{h.label}</span>
+                  </div>
+                  <p className="mono mt-1 text-[10px] text-muted">{h.time}</p>
+                </button>
               ))}
             </div>
           )}

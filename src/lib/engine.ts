@@ -40,6 +40,19 @@ function hashRand(i: number, j: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
+// PRNG determinístico e estável — usado pela amostragem orgânica (stipple)
+// para que o mesmo par imagem+parâmetros sempre gere o mesmo padrão de
+// pontos, sem "piscar" ao ajustar um controle sem relação (ex.: cor).
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // ----------------------------------------------------------------------------
 // Carregar imagem → ImageData numa resolução de trabalho
 // ----------------------------------------------------------------------------
@@ -75,6 +88,46 @@ export function imageToSource(img: HTMLImageElement, maxDim = 1000): SourceData 
 // Amostragem → lista de pontos
 // ----------------------------------------------------------------------------
 
+interface Tone {
+  v: number; // escuridão normalizada 0..1
+  radius: number;
+  color: string;
+}
+
+/** Luminância → tom/tamanho/cor de um ponto na posição (px,py). Compartilhado
+ * por todos os modos de distribuição (grade, radial, orgânico) — garante que
+ * brilho/contraste/gama/limiar/cor respondam exatamente igual em qualquer modo. */
+function evalTone(
+  sample: (px: number, py: number) => { r: number; g: number; b: number; a: number },
+  p: PointillismParams,
+  contrastF: number,
+  px: number,
+  py: number
+): Tone | null {
+  const { r, g, b, a } = sample(px, py);
+  if (a < 8) return null; // fundo transparente → sem ponto
+
+  let lum = 0.299 * r + 0.587 * g + 0.114 * b; // 0..255
+  lum = lum + p.brightness * 2.55;
+  lum = contrastF * (lum - 128) + 128;
+  let n = clamp(lum / 255);
+  n = Math.pow(n, p.gamma);
+  if (p.invert) n = 1 - n;
+  const bright = n * 255;
+  if (bright < p.thresholdLow || bright > p.thresholdHigh) return null;
+
+  const v = clamp(1 - n); // escuridão → tamanho
+  const radius = (p.minSize + (p.maxSize - p.minSize) * v) * p.sizeScale;
+  if (radius < 0.15) return null;
+
+  let color: string;
+  if (p.colorMode === "sample") color = rgbToHex(r, g, b);
+  else if (p.colorMode === "duotone") color = lerpColor(p.color2, p.color1, v);
+  else color = p.color1;
+
+  return { v, radius, color };
+}
+
 export function sampleDots(src: SourceData, p: PointillismParams): Dot[] {
   const { data, width: W, height: H } = src;
   const dots: Dot[] = [];
@@ -88,52 +141,59 @@ export function sampleDots(src: SourceData, p: PointillismParams): Dot[] {
 
   const contrastF = (259 * (p.contrast * 1.28 + 255)) / (255 * (259 - p.contrast * 1.28));
 
+  const flowOffset = (px: number, py: number) => {
+    if (p.flow <= 0) return { dx: 0, dy: 0 };
+    const fx = (px / 100) * p.flowScale;
+    const fy = (py / 100) * p.flowScale;
+    const ang =
+      (p.flowAngle * Math.PI) / 180 +
+      flowNoise(fx, fy) * Math.PI * 2 +
+      p.wave * Math.sin((px + py) * 0.04);
+    const mag = p.flow * (0.5 + 0.5 * flowNoise(fx + 10, fy + 10));
+    return { dx: Math.cos(ang) * mag, dy: Math.sin(ang) * mag };
+  };
+
   const evalPoint = (px: number, py: number, i: number, j: number) => {
-    const { r, g, b, a } = sample(px, py);
-    if (a < 8) return; // fundo transparente → sem ponto
+    const tone = evalTone(sample, p, contrastF, px, py);
+    if (!tone) return;
 
-    let lum = 0.299 * r + 0.587 * g + 0.114 * b; // 0..255
-    lum = lum + p.brightness * 2.55;
-    lum = contrastF * (lum - 128) + 128;
-    let n = clamp(lum / 255);
-    n = Math.pow(n, p.gamma);
-    if (p.invert) n = 1 - n;
-    const bright = n * 255;
-    if (bright < p.thresholdLow || bright > p.thresholdHigh) return;
-
-    const v = clamp(1 - n); // escuridão → tamanho
-    let radius = (p.minSize + (p.maxSize - p.minSize) * v) * p.sizeScale;
-    if (radius < 0.15) return;
-
-    // movimento / fluxo
-    let dx = 0;
-    let dy = 0;
-    if (p.flow > 0) {
-      const fx = (px / 100) * p.flowScale;
-      const fy = (py / 100) * p.flowScale;
-      const ang =
-        (p.flowAngle * Math.PI) / 180 +
-        flowNoise(fx, fy) * Math.PI * 2 +
-        p.wave * Math.sin((px + py) * 0.04);
-      const mag = p.flow * (0.5 + 0.5 * flowNoise(fx + 10, fy + 10));
-      dx = Math.cos(ang) * mag;
-      dy = Math.sin(ang) * mag;
-    }
-    // jitter
+    let { dx, dy } = flowOffset(px, py);
     if (p.jitter > 0) {
       dx += (hashRand(i, j) - 0.5) * p.jitter * p.spacing;
       dy += (hashRand(i + 7919, j + 104729) - 0.5) * p.jitter * p.spacing;
     }
 
-    let color: string;
-    if (p.colorMode === "sample") color = rgbToHex(r, g, b);
-    else if (p.colorMode === "duotone") color = lerpColor(p.color2, p.color1, v);
-    else color = p.color1;
-
-    dots.push({ x: px + dx, y: py + dy, r: radius, v, color });
+    dots.push({ x: px + dx, y: py + dy, r: tone.radius, v: tone.v, color: tone.color });
   };
 
-  if (p.grid === "concentric") {
+  if (p.grid === "stipple") {
+    // Amostragem orgânica: em vez de avaliar uma grade fixa, sorteia posições
+    // e aceita cada candidata com probabilidade proporcional à escuridão local
+    // (rejection sampling ponderado) — resultado com densidade de pontos que
+    // segue o tom da imagem, como um pontilhismo feito à mão, em vez de uma
+    // grade regular com pontos de tamanho variável.
+    const rng = mulberry32(0x9e3779b9 ^ Math.round(W * 73856093 + H * 19349663));
+    const targetN = Math.min(220000, Math.max(1, Math.round((W * H) / (p.spacing * p.spacing))));
+    const maxAttempts = Math.max(targetN * 40, 150000);
+    let accepted = 0;
+    let attempts = 0;
+    while (accepted < targetN && attempts < maxAttempts) {
+      attempts++;
+      const px = rng() * W;
+      const py = rng() * H;
+      const tone = evalTone(sample, p, contrastF, px, py);
+      if (!tone) continue;
+      if (rng() > tone.v) continue; // aceita com probabilidade = escuridão
+
+      let { dx, dy } = flowOffset(px, py);
+      if (p.jitter > 0) {
+        dx += (rng() - 0.5) * p.jitter * p.spacing;
+        dy += (rng() - 0.5) * p.jitter * p.spacing;
+      }
+      dots.push({ x: px + dx, y: py + dy, r: tone.radius, v: tone.v, color: tone.color });
+      accepted++;
+    }
+  } else if (p.grid === "concentric") {
     const cx = W / 2;
     const cy = H / 2;
     const maxR = Math.hypot(W, H) / 2;
