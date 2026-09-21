@@ -10,8 +10,9 @@ import TextStudio from "@/components/text/TextStudio";
 import TrackerStudio from "@/components/tracker/TrackerStudio";
 import ParticleStudio from "@/components/particle/ParticleStudio";
 import BlobStudio from "@/components/blob/BlobStudio";
+import AsciiStudio from "@/components/ascii/AsciiStudio";
 
-type Tab = "ponto" | "texto" | "tracker" | "particulas" | "fusao";
+type Tab = "ponto" | "texto" | "tracker" | "particulas" | "fusao" | "ascii";
 
 // ─── Icons — minimal line/dot marks, one per functionality, shared by the
 // rail cards and the home cards so the whole app reads as one icon set ────
@@ -82,6 +83,15 @@ function IconFusion() {
   );
 }
 
+function IconAscii() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 6.5l3.5 2.5L4 11.5" />
+      <path d="M9.5 12h4.5" />
+    </svg>
+  );
+}
+
 const TABS: { id: Tab; num: string; label: string; desc: string; icon: () => React.ReactNode }[] = [
   {
     id: "ponto",
@@ -117,6 +127,13 @@ const TABS: { id: Tab; num: string; label: string; desc: string; icon: () => Rea
     label: "Fusão",
     desc: "Pontos que se conectam e se fundem em blobs orgânicos, com movimento contínuo.",
     icon: IconFusion,
+  },
+  {
+    id: "ascii",
+    num: "06",
+    label: "ASCII Art",
+    desc: "Converta imagens, fotos ou texto em arte ASCII e Braille — dithering, bordas e exportações.",
+    icon: IconAscii,
   },
 ];
 
@@ -287,7 +304,7 @@ export default function Home() {
                   <p className="mono text-[10px] uppercase tracking-[.22em] text-red mb-3">UPGM — LAB</p>
                   <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Escolha uma ferramenta</h1>
                   <p className="mt-2 text-sm text-muted">
-                    Cinco estúdios visuais — clique num card ou use o atalho na barra lateral.
+                    Seis estúdios visuais — clique num card ou use o atalho na barra lateral.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -297,6 +314,8 @@ export default function Home() {
                 </div>
               </div>
             </main>
+          ) : tab === "ascii" ? (
+            <AsciiStudio />
           ) : tab === "fusao" ? (
             <BlobStudio />
           ) : tab === "particulas" ? (
