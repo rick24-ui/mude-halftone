@@ -259,6 +259,11 @@ export default function TrackerStudio() {
   // box jitter / inset placement, without otherwise changing opts
   const [shuffleTick, setShuffleTick] = useState(0);
 
+  // Proporção real do canvas de exibição (ele é dimensionado imperativamente,
+  // então observamos os atributos width/height) — usada pra ajustar o preview
+  // ao palco sem distorcer e ampliando mídias pequenas.
+  const [canvasRatio, setCanvasRatio] = useState(1);
+
   // Video playback / timeline state
   const [videoDuration, setVideoDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -295,6 +300,21 @@ export default function TrackerStudio() {
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoringRef = useRef(false);
   const historyIdRef = useRef(0);
+
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const update = () => {
+      if (c.width > 0 && c.height > 0) setCanvasRatio(c.width / c.height);
+    };
+    const raf = requestAnimationFrame(update);
+    const mo = new MutationObserver(update);
+    mo.observe(c, { attributes: true, attributeFilter: ["width", "height"] });
+    return () => {
+      cancelAnimationFrame(raf);
+      mo.disconnect();
+    };
+  }, [imgSrc, videoSrc]);
 
   const set = <K extends keyof DrawOptions>(key: K, val: DrawOptions[K]) =>
     setOpts((o) => ({ ...o, [key]: val }));
@@ -915,7 +935,7 @@ export default function TrackerStudio() {
           </div>
 
           {/* ── Centered media stage ───────────────────────────────────── */}
-          <div className="absolute inset-0 flex items-center justify-center p-6">
+          <div className="absolute inset-0 flex items-center justify-center p-6 [container-type:size]">
             {!imgSrc && !videoSrc ? (
               <div
                 className={`flex flex-col items-center gap-5 rounded-2xl border-2 border-dashed p-20 text-center transition-colors ${
@@ -957,7 +977,11 @@ export default function TrackerStudio() {
                   onMouseUp={handlePointerUp}
                   onMouseLeave={handlePointerUp}
                   title={opts.zoomInset ? "Clique em um ponto para criar um zoom — arraste para mover, use o canto para redimensionar" : undefined}
-                  className={`max-h-full max-w-full rounded-2xl shadow-2xl ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
+                  style={{
+                    width: `min(100cqw, calc(100cqh * ${canvasRatio}))`,
+                    height: `min(100cqh, calc(100cqw / ${canvasRatio}))`,
+                  }}
+                  className={`block shrink-0 rounded-2xl shadow-2xl ring-1 ring-white/10 ${opts.zoomInset && points.length ? "cursor-crosshair" : ""}`}
                 />
               </>
             )}
